@@ -97,3 +97,28 @@ func TestBuildZipIncludesArtifacts(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildFilesRequiresPolicy(t *testing.T) {
+	_, err := BuildFiles(Input{}, "")
+	if err == nil {
+		t.Fatalf("expected error for missing policy")
+	}
+}
+
+func TestWriteZip(t *testing.T) {
+	files := map[string][]byte{
+		"a.txt": []byte("alpha"),
+		"b.txt": []byte("bravo"),
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := WriteZip(buf, files); err != nil {
+		t.Fatalf("write zip: %v", err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatalf("zip reader: %v", err)
+	}
+	if len(reader.File) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(reader.File))
+	}
+}

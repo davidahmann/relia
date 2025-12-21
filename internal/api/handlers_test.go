@@ -292,3 +292,165 @@ func TestPackEndpoint(t *testing.T) {
 		t.Fatalf("expected zip content-type, got %s", ct)
 	}
 }
+
+func TestVerifyMissingReceiptID(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/verify/", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestVerifyReceiptNotFound(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/verify/missing", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", res.Code)
+	}
+}
+
+func TestVerifyInvalidSignature(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	claims := ActorContext{
+		Subject:  "repo:org/repo:ref:refs/heads/main",
+		Issuer:   "relia-dev",
+		Repo:     "org/repo",
+		Workflow: "terraform-prod",
+		RunID:    "123456",
+		SHA:      "abcdef123",
+	}
+
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	receipt, ok := service.Artifacts.GetReceipt(resp.ReceiptID)
+	if !ok {
+		t.Fatalf("receipt missing")
+	}
+	receipt.Sig = []byte("bad")
+	service.Artifacts.PutReceipt(receipt)
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/verify/"+resp.ReceiptID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestPackMissingReceiptID(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/pack/", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestPackReceiptNotFound(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/pack/missing", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", res.Code)
+	}
+}
+
+func TestPackMissingContext(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	claims := ActorContext{
+		Subject:  "repo:org/repo:ref:refs/heads/main",
+		Issuer:   "relia-dev",
+		Repo:     "org/repo",
+		Workflow: "terraform-prod",
+		RunID:    "123456",
+		SHA:      "abcdef123",
+	}
+
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	receipt, ok := service.Artifacts.GetReceipt(resp.ReceiptID)
+	if !ok {
+		t.Fatalf("receipt missing")
+	}
+	receipt.ContextID = "missing"
+	service.Artifacts.PutReceipt(receipt)
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/pack/"+resp.ReceiptID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", res.Code)
+	}
+}

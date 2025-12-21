@@ -12,25 +12,13 @@ import (
 )
 
 func main() {
-	addr := os.Getenv("RELIA_LISTEN_ADDR")
-	if addr == "" {
-		addr = ":8080"
-	}
-
-	policyPath := os.Getenv("RELIA_POLICY_PATH")
-	if policyPath == "" {
-		policyPath = "policies/relia.yaml"
-	}
-
-	signingSecret := os.Getenv("RELIA_SLACK_SIGNING_SECRET")
-
-	server := newServer(addr, policyPath, signingSecret)
-
-	log.Printf("relia-gateway listening on %s", addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server error: %v", err)
+	if err := runFn(os.Getenv, listenAndServe, newServer); err != nil {
+		fatalf("server error: %v", err)
 	}
 }
+
+var runFn = run
+var fatalf = log.Fatalf
 
 func newServer(addr string, policyPath string, signingSecret string) *http.Server {
 	authorizeService, err := api.NewAuthorizeService(policyPath)
@@ -53,4 +41,34 @@ func newServer(addr string, policyPath string, signingSecret string) *http.Serve
 		Handler:           api.NewRouter(h),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+}
+
+type envFn func(string) string
+type listenFn func(*http.Server) error
+type serverFactory func(addr string, policyPath string, signingSecret string) *http.Server
+
+func run(getenv envFn, listen listenFn, factory serverFactory) error {
+	addr := getenv("RELIA_LISTEN_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	policyPath := getenv("RELIA_POLICY_PATH")
+	if policyPath == "" {
+		policyPath = "policies/relia.yaml"
+	}
+
+	signingSecret := getenv("RELIA_SLACK_SIGNING_SECRET")
+
+	server := factory(addr, policyPath, signingSecret)
+
+	log.Printf("relia-gateway listening on %s", addr)
+	if err := listen(server); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
+}
+
+func listenAndServe(server *http.Server) error {
+	return server.ListenAndServe()
 }
