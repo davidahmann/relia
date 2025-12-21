@@ -11,6 +11,7 @@ require_cmd() {
 
 files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.go$' || true)
 yaml_files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(yml|yaml)$' || true)
+web_files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^docs-site/.*\.(js|jsx|ts|tsx)$' || true)
 
 if [[ -n "$files" ]]; then
   require_cmd gofmt
@@ -29,4 +30,13 @@ fi
 if [[ -n "$yaml_files" ]]; then
   require_cmd yamllint
   yamllint -d '{extends: default, rules: {line-length: disable}}' $yaml_files
+fi
+
+if [[ -n "$web_files" ]]; then
+  require_cmd npm
+  if [[ -d "docs-site/node_modules" ]]; then
+    npm --prefix docs-site run lint
+  else
+    echo "docs-site/node_modules missing; skipping docs-site lint. Run: (cd docs-site && npm ci && npm run lint)" >&2
+  fi
 fi

@@ -54,3 +54,28 @@ jobs:
 
           print(f"coverage {total:.1f}%")
           PY
+
+  docs-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Lint
+        working-directory: docs-site
+        run: npm run lint
+
+      - name: Build
+        working-directory: docs-site
+        run: npm run build
