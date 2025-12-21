@@ -39,4 +39,12 @@ go run ./cmd/relia-cli pack <receipt_id> --out relia-pack.zip
 - `docs/QUICKSTART.md`
 - `docs/SECURITY.md`
 - `docs/TESTING.md`
+- `docs/RELEASE.md`
+- `docs/ROADMAP.md`
 - `product/spec.md`
+
+## Contributing
+
+- `CONTRIBUTING.md`
+- `CODE_OF_CONDUCT.md`
+- `LICENSE`

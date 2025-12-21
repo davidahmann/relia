@@ -1,0 +1,39 @@
+---
+name: Feature request
+description: Propose a new feature or improvement
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please keep it concrete and tie it to a user problem.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What pain are you solving? Who has it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Relia to do?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Any requirements, constraints, or non-goals?
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking change?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true

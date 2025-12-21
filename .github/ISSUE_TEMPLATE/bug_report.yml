@@ -1,0 +1,55 @@
+---
+name: Bug report
+description: Report a bug in Relia
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail to reproduce.
+  - type: input
+    id: version
+    attributes:
+      label: Relia version
+      placeholder: "git SHA or tag (e.g. v0.1.0)"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - relia-gateway
+        - relia-cli
+        - github-action
+        - policy
+        - slack
+        - pack/verify
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include logs or error output if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
