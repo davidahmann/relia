@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"html/template"
 	"net/http"
@@ -101,7 +102,14 @@ func (h *Handler) VerifyPage(w http.ResponseWriter, r *http.Request) {
 		KeyID:      receiptRec.KeyID,
 		Sig:        receiptRec.Sig,
 	}
-	err := ledger.VerifyReceipt(stored, h.AuthorizeService.PublicKey)
+	pub, ok := h.AuthorizeService.Ledger.GetKey(receiptRec.KeyID)
+	var verifyKey ed25519.PublicKey
+	if ok {
+		verifyKey = ed25519.PublicKey(pub.PublicKey)
+	} else {
+		verifyKey = h.AuthorizeService.PublicKey
+	}
+	err := ledger.VerifyReceipt(stored, verifyKey)
 	valid := err == nil
 
 	var ctxRec types.ContextRecord

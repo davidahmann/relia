@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -115,11 +116,6 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.AuthorizeService.PublicKey == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "public key not configured"})
-		return
-	}
-
 	stored := ledger.StoredReceipt{
 		ReceiptID:  receiptRec.ReceiptID,
 		BodyDigest: receiptRec.BodyDigest,
@@ -127,7 +123,20 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		KeyID:      receiptRec.KeyID,
 		Sig:        receiptRec.Sig,
 	}
-	err := ledger.VerifyReceipt(stored, h.AuthorizeService.PublicKey)
+
+	pub, ok := h.AuthorizeService.Ledger.GetKey(receiptRec.KeyID)
+	var verifyKey ed25519.PublicKey
+	if ok {
+		verifyKey = ed25519.PublicKey(pub.PublicKey)
+	} else {
+		verifyKey = h.AuthorizeService.PublicKey
+	}
+	if verifyKey == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "public key not configured"})
+		return
+	}
+
+	err := ledger.VerifyReceipt(stored, verifyKey)
 	if err != nil {
 		quality := grade.Evaluate(grade.Input{Valid: false, Receipt: stored})
 		writeJSON(w, http.StatusOK, map[string]any{

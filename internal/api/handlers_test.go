@@ -346,6 +346,41 @@ func TestVerifyInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestVerifyUsesLedgerKeyWhenServiceKeyMissing(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service := newTestService(t, "../../policies/relia.yaml")
+
+	claims := ActorContext{
+		Subject:  "repo:org/repo:ref:refs/heads/main",
+		Issuer:   "relia-dev",
+		Repo:     "org/repo",
+		Workflow: "terraform-prod",
+		RunID:    "123456",
+		SHA:      "abcdef123",
+	}
+
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	// Simulate a restart/misconfig where the handler doesn't have a public key,
+	// but the ledger still has the signing key stored under receipt.key_id.
+	service.PublicKey = nil
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/verify/"+resp.ReceiptID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+}
+
 func TestPackMissingReceiptID(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
