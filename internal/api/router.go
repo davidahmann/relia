@@ -7,6 +7,9 @@ import (
 func NewRouter(handler *Handler) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/verify/", handler.VerifyPage)
+	mux.HandleFunc("/pack/", handler.PackPublic)
+
 	mux.HandleFunc("/v1/authorize", handler.Authorize)
 	mux.HandleFunc("/v1/approvals/", handler.Approvals)
 	mux.HandleFunc("/v1/verify/", handler.Verify)

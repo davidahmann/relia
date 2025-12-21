@@ -1,0 +1,19 @@
+---
+policy_id: relia-terraform-prod
+policy_version: "v0.1"
+
+defaults:
+  ttl_seconds: 900
+  require_approval: false
+  deny: false
+
+rules:
+  - id: terraform_prod_requires_approval
+    match:
+      action: "terraform.apply"
+      env: "prod"
+    effect:
+      require_approval: true
+      ttl_seconds: 900
+      aws_role_arn: "arn:aws:iam::123456789012:role/relia-terraform-prod"
+      risk: "high"

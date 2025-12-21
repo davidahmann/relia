@@ -82,6 +82,8 @@ func TestBuildZipIncludesArtifacts(t *testing.T) {
 		"decision.json":  false,
 		"policy.yaml":    false,
 		"approvals.json": false,
+		"summary.json":   false,
+		"summary.html":   false,
 		"manifest.json":  false,
 		"sha256sums.txt": false,
 	}

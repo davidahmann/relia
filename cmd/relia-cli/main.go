@@ -73,6 +73,7 @@ func handleVerify(args []string, stdout io.Writer, stderr io.Writer) int {
 		ReceiptID string `json:"receipt_id"`
 		Valid     bool   `json:"valid"`
 		Error     string `json:"error,omitempty"`
+		Grade     string `json:"grade,omitempty"`
 	}
 	if err := json.Unmarshal(respBody, &payload); err != nil {
 		fmt.Fprintln(stderr, "invalid response:", err)
@@ -85,7 +86,11 @@ func handleVerify(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if payload.Valid {
-		fmt.Fprintf(stdout, "valid=true receipt_id=%s\n", payload.ReceiptID)
+		if payload.Grade != "" {
+			fmt.Fprintf(stdout, "valid=true receipt_id=%s grade=%s\n", payload.ReceiptID, payload.Grade)
+		} else {
+			fmt.Fprintf(stdout, "valid=true receipt_id=%s\n", payload.ReceiptID)
+		}
 		return 0
 	}
 	fmt.Fprintf(stdout, "valid=false receipt_id=%s error=%s\n", payload.ReceiptID, payload.Error)
@@ -158,6 +163,63 @@ func handlePolicy(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "ok policy_id=%s policy_hash=%s\n", loaded.Policy.PolicyID, loaded.Hash)
 		return 0
+	case "test":
+		fs := flag.NewFlagSet("policy test", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+		policyPath := fs.String("policy", "", "path to policy yaml (required)")
+		action := fs.String("action", "", "action to test (required)")
+		resource := fs.String("resource", "", "resource to test (required)")
+		envName := fs.String("env", "", "environment to test (required)")
+		jsonOut := fs.Bool("json", false, "print raw JSON output")
+		if err := fs.Parse(args[1:]); err != nil {
+			fs.Usage()
+			return 2
+		}
+		if *policyPath == "" || *action == "" || *resource == "" || *envName == "" {
+			fmt.Fprintln(stderr, "policy test requires --policy --action --resource --env")
+			fs.Usage()
+			return 2
+		}
+		loaded, err := policy.LoadPolicy(*policyPath)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+
+		decision := policy.Evaluate(loaded.Policy, loaded.Hash, policy.Input{
+			Action:   *action,
+			Resource: *resource,
+			Env:      *envName,
+		})
+		if *jsonOut {
+			out, _ := json.MarshalIndent(decision, "", "  ")
+			_, _ = stdout.Write(append(out, '\n'))
+			return 0
+		}
+
+		fmt.Fprintf(stdout, "verdict=%s requires_approval=%t\n", decision.Verdict, decision.RequireApproval)
+		if decision.MatchedRuleID != "" {
+			fmt.Fprintf(stdout, "matched_rule=%s\n", decision.MatchedRuleID)
+		} else {
+			fmt.Fprintf(stdout, "matched_rule=<defaults>\n")
+		}
+		fmt.Fprintf(stdout, "policy_id=%s policy_version=%s policy_hash=%s\n", decision.PolicyID, decision.PolicyVersion, decision.PolicyHash)
+		if decision.AWSRoleARN != "" {
+			fmt.Fprintf(stdout, "aws_role_arn=%s\n", decision.AWSRoleARN)
+		}
+		if decision.TTLSeconds != 0 {
+			fmt.Fprintf(stdout, "ttl_seconds=%d\n", decision.TTLSeconds)
+		}
+		if decision.Risk != "" {
+			fmt.Fprintf(stdout, "risk=%s\n", decision.Risk)
+		}
+		if decision.Reason != "" {
+			fmt.Fprintf(stdout, "reason=%s\n", decision.Reason)
+		}
+		if len(decision.ReasonCodes) > 0 {
+			fmt.Fprintf(stdout, "reason_codes=%s\n", strings.Join(decision.ReasonCodes, ","))
+		}
+		return 0
 	default:
 		usage(stderr)
 		return 2
@@ -201,5 +263,6 @@ Usage:
   relia verify <receipt_id> [--addr URL] [--json] [--token TOKEN]
   relia pack <receipt_id> --out relia-pack.zip [--addr URL] [--token TOKEN]
   relia policy lint <policy_path>
+  relia policy test --policy PATH --action ACTION --resource RESOURCE --env ENV [--json]
 `)
 }

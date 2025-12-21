@@ -284,3 +284,12 @@ func TestAWSBrokerFromEnv(t *testing.T) {
 		t.Fatalf("expected real broker when region present")
 	}
 }
+
+func TestEnvBool(t *testing.T) {
+	if !envBool("true") || !envBool("1") || !envBool("YES") || !envBool("on") {
+		t.Fatalf("expected true values")
+	}
+	if envBool("") || envBool("0") || envBool("false") || envBool("nope") {
+		t.Fatalf("expected false values")
+	}
+}

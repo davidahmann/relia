@@ -110,3 +110,16 @@ After approval, re-run `/v1/authorize` with the same request body to receive the
 5. Click approve/deny in Slack and observe:
    - `/v1/approvals/<id>` transitions
    - outbox row transitions to `sent` and has `sent_at`
+
+## Demo links (optional)
+
+If you enable public verify:
+
+```bash
+export RELIA_PUBLIC_VERIFY=1
+```
+
+Slack messages include the `approval_id`; after approval you can share:
+
+- `https://<your-gateway>/verify/<receipt_id>`
+- `https://<your-gateway>/pack/<receipt_id>`

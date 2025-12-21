@@ -157,6 +157,7 @@ func newServer(cfg config.Config, getenv envFn) (*http.Server, error) {
 		Auth:             auth.NewAuthenticatorFromEnv(),
 		AuthorizeService: authorizeService,
 		SlackHandler:     slackHandler,
+		PublicVerify:     envBool(getenv("RELIA_PUBLIC_VERIFY")),
 	}
 
 	server := &http.Server{

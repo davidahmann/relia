@@ -20,6 +20,12 @@ go run ./cmd/relia-gateway
 
 Then call the API with `Authorization: Bearer dev`.
 
+### Policy simulator
+
+```bash
+go run ./cmd/relia-cli policy test --policy policies/relia.yaml --action terraform.apply --resource stack/prod --env prod
+```
+
 ### Run locally (Docker Compose)
 
 ```bash
@@ -35,11 +41,23 @@ go run ./cmd/relia-cli verify <receipt_id>
 go run ./cmd/relia-cli pack <receipt_id> --out relia-pack.zip
 ```
 
+Packs include `summary.html` and `summary.json` for a one-page audit summary.
+
+### Hosted verify page (optional)
+
+```bash
+export RELIA_PUBLIC_VERIFY=1
+go run ./cmd/relia-gateway
+```
+
+Then open `http://localhost:8080/verify/<receipt_id>` (and download `http://localhost:8080/pack/<receipt_id>`).
+
 ## Docs
 
 - `docs/QUICKSTART.md`
 - `docs/SLACK.md`
 - `docs/AWS_OIDC.md`
+- `docs/POLICIES.md`
 - `docs/SECURITY.md`
 - `docs/TESTING.md`
 - `docs/RELEASE.md`

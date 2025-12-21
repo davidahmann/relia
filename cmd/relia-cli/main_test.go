@@ -37,7 +37,7 @@ func TestHandleVerify(t *testing.T) {
 			t.Fatalf("unexpected auth header: %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true}`))
+		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true,"grade":"A"}`))
 	})
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -50,6 +50,9 @@ func TestHandleVerify(t *testing.T) {
 	if !strings.Contains(out.String(), "valid=true") {
 		t.Fatalf("unexpected stdout: %s", out.String())
 	}
+	if !strings.Contains(out.String(), "grade=A") {
+		t.Fatalf("expected grade output, got: %s", out.String())
+	}
 
 	out.Reset()
 	errOut.Reset()
@@ -57,7 +60,7 @@ func TestHandleVerify(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
-	if strings.TrimSpace(out.String()) != `{"receipt_id":"r1","valid":true}` {
+	if strings.TrimSpace(out.String()) != `{"receipt_id":"r1","valid":true,"grade":"A"}` {
 		t.Fatalf("unexpected json stdout: %s", out.String())
 	}
 }
@@ -241,6 +244,65 @@ func TestHandlePolicy_Errors(t *testing.T) {
 	out.Reset()
 	errOut.Reset()
 	if code := run([]string{"relia", "policy", "lint", "missing.yaml"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+}
+
+func TestHandlePolicyTest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "policy.yaml")
+	policyYAML := `
+policy_id: test
+policy_version: "1"
+defaults:
+  ttl_seconds: 900
+  require_approval: false
+  deny: false
+rules:
+  - id: prod_terraform
+    match:
+      action: "terraform.apply"
+      env: "prod"
+    effect:
+      require_approval: true
+      ttl_seconds: 900
+      aws_role_arn: "arn:aws:iam::123456789012:role/test"
+`
+	if err := os.WriteFile(path, []byte(policyYAML), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var out, errOut bytes.Buffer
+	code := run([]string{"relia", "policy", "test", "--policy", path, "--action", "terraform.apply", "--resource", "stack/prod", "--env", "prod"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "matched_rule=prod_terraform") {
+		t.Fatalf("unexpected output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"relia", "policy", "test", "--policy", path, "--action", "terraform.apply", "--resource", "stack/prod", "--env", "prod", "--json"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	if !strings.Contains(out.String(), "\"MatchedRuleID\"") {
+		t.Fatalf("expected json decision output, got: %s", out.String())
+	}
+}
+
+func TestHandlePolicyTest_Errors(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := run([]string{"relia", "policy", "test"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"relia", "policy", "test", "--policy", "missing.yaml", "--action", "a", "--resource", "r", "--env", "e"}, &out, &errOut)
+	if code != 1 {
 		t.Fatalf("expected 1, got %d", code)
 	}
 }

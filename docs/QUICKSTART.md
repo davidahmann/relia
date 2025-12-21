@@ -11,6 +11,12 @@
 go run ./cmd/relia-gateway
 ```
 
+## Policy simulator
+
+```bash
+go run ./cmd/relia-cli policy test --policy policies/relia.yaml --action terraform.apply --resource stack/prod --env prod
+```
+
 ## Slack approvals (optional)
 
 - `docs/SLACK.md`
@@ -18,6 +24,23 @@ go run ./cmd/relia-gateway
 ## AWS via GitHub OIDC (optional)
 
 - `docs/AWS_OIDC.md`
+
+## Policy templates
+
+- `docs/POLICIES.md`
+
+## Hosted verify page (optional)
+
+Enable public verify/pack endpoints:
+
+```bash
+RELIA_PUBLIC_VERIFY=1 go run ./cmd/relia-gateway
+```
+
+Then:
+
+- `GET /verify/<receipt_id>` renders a human-friendly receipt view (includes a quality grade).
+- `GET /pack/<receipt_id>` downloads a pack zip (includes `summary.html` + `summary.json`).
 
 ## Run the gateway (Docker)
 

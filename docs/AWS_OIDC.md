@@ -66,3 +66,13 @@ Locally (partial):
 
 - You can validate request/receipt flow with `RELIA_AWS_MODE=dev` (dev creds) using `go test ./tests/smoke -run TestSmoke`.
 - Full real-ST S validation requires the GitHub Actions OIDC runtime + AWS trust configuration.
+
+## Demo links (optional)
+
+If you enable public verify on the gateway:
+
+```bash
+export RELIA_PUBLIC_VERIFY=1
+```
+
+You can link to `https://<your-gateway>/verify/<receipt_id>` from workflow logs or PR comments.

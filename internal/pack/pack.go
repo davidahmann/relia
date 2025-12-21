@@ -80,6 +80,17 @@ func BuildFiles(input Input, baseURL string) (map[string][]byte, error) {
 		files["approvals.json"] = append(approvalsJSON, '\n')
 	}
 
+	summary, summaryHTML, err := BuildSummary(input, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	summaryJSON, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	files["summary.json"] = append(summaryJSON, '\n')
+	files["summary.html"] = append(summaryHTML, '\n')
+
 	fileEntries := buildFileEntries(files)
 
 	createdAt := input.CreatedAt

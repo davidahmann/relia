@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/davidahmann/relia/internal/auth"
+	"github.com/davidahmann/relia/internal/grade"
 	"github.com/davidahmann/relia/internal/ledger"
 	"github.com/davidahmann/relia/internal/pack"
 	"github.com/davidahmann/relia/internal/slack"
@@ -18,6 +19,7 @@ type Handler struct {
 	Auth             auth.Authenticator
 	AuthorizeService *AuthorizeService
 	SlackHandler     *slack.InteractionHandler
+	PublicVerify     bool
 }
 
 func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
@@ -123,13 +125,37 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	}
 	err := ledger.VerifyReceipt(stored, h.AuthorizeService.PublicKey)
 	if err != nil {
+		quality := grade.Evaluate(grade.Input{Valid: false, Receipt: stored})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"receipt_id": receiptID,
 			"valid":      false,
+			"grade":      quality.Grade,
+			"grade_info": map[string]any{"reasons": quality.Reasons},
 			"error":      err.Error(),
 		})
 		return
 	}
+
+	var ctxRec types.ContextRecord
+	var decRec types.DecisionRecord
+	var ctx *types.ContextRecord
+	var dec *types.DecisionRecord
+	if rec, ok := h.AuthorizeService.Ledger.GetContext(receiptRec.ContextID); ok {
+		if err := json.Unmarshal(rec.BodyJSON, &ctxRec); err == nil {
+			ctx = &ctxRec
+		}
+	}
+	if rec, ok := h.AuthorizeService.Ledger.GetDecision(receiptRec.DecisionID); ok {
+		if err := json.Unmarshal(rec.BodyJSON, &decRec); err == nil {
+			dec = &decRec
+		}
+	}
+	quality := grade.Evaluate(grade.Input{
+		Valid:    true,
+		Receipt:  stored,
+		Context:  ctx,
+		Decision: dec,
+	})
 
 	var body map[string]any
 	if err := json.Unmarshal(receiptRec.BodyJSON, &body); err == nil {
@@ -148,6 +174,8 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"receipt_id": receiptID,
 		"valid":      true,
+		"grade":      quality.Grade,
+		"grade_info": map[string]any{"reasons": quality.Reasons},
 		"receipt":    body,
 	})
 }
