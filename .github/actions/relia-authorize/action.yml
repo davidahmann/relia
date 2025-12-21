@@ -1,0 +1,36 @@
+---
+name: "Relia Authorize"
+description: "Policy-check + optional approval + mint AWS creds + emit receipt"
+inputs:
+  relia_url:
+    required: true
+  action:
+    required: true
+  resource:
+    required: true
+  env:
+    required: true
+  intent_json:
+    required: false
+    default: "{}"
+  plan_digest:
+    required: false
+  diff_url:
+    required: false
+outputs:
+  receipt_id:
+    value: ${{ steps.auth.outputs.receipt_id }}
+runs:
+  using: "composite"
+  steps:
+    - id: auth
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/authorize.sh" \
+          "${{ inputs.relia_url }}" \
+          "${{ inputs.action }}" \
+          "${{ inputs.resource }}" \
+          "${{ inputs.env }}" \
+          '${{ inputs.intent_json }}' \
+          "${{ inputs.plan_digest }}" \
+          "${{ inputs.diff_url }}"
