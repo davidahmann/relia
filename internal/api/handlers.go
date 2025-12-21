@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/davidahmann/relia/internal/auth"
+	"github.com/davidahmann/relia/internal/ledger"
+	"github.com/davidahmann/relia/internal/pack"
 	"github.com/davidahmann/relia/internal/slack"
 )
 
@@ -88,14 +90,119 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "verify not implemented"})
+	if h.AuthorizeService == nil || h.AuthorizeService.Artifacts == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "verify not implemented"})
+		return
+	}
+
+	receiptID := strings.TrimPrefix(r.URL.Path, "/v1/verify/")
+	if receiptID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing receipt_id"})
+		return
+	}
+
+	receipt, ok := h.AuthorizeService.Artifacts.GetReceipt(receiptID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "receipt not found"})
+		return
+	}
+
+	if h.AuthorizeService.PublicKey == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "public key not configured"})
+		return
+	}
+
+	err := ledger.VerifyReceipt(receipt, h.AuthorizeService.PublicKey)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"receipt_id": receiptID,
+			"valid":      false,
+			"error":      err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"receipt_id": receiptID,
+		"valid":      true,
+	})
 }
 
 func (h *Handler) Pack(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "pack not implemented"})
+	if h.AuthorizeService == nil || h.AuthorizeService.Artifacts == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "pack not implemented"})
+		return
+	}
+
+	receiptID := strings.TrimPrefix(r.URL.Path, "/v1/pack/")
+	if receiptID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing receipt_id"})
+		return
+	}
+
+	receipt, ok := h.AuthorizeService.Artifacts.GetReceipt(receiptID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "receipt not found"})
+		return
+	}
+
+	ctx, ok := h.AuthorizeService.Artifacts.GetContext(receipt.ContextID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "context not found"})
+		return
+	}
+
+	decision, ok := h.AuthorizeService.Artifacts.GetDecision(receipt.DecisionID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "decision not found"})
+		return
+	}
+
+	policyBytes, ok := h.AuthorizeService.Artifacts.GetPolicy(receipt.PolicyHash)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
+		return
+	}
+
+	approvals := []pack.ApprovalRecord{}
+	if receipt.ApprovalID != nil {
+		if approval, ok := h.AuthorizeService.GetApproval(*receipt.ApprovalID); ok {
+			approvals = append(approvals, pack.ApprovalRecord{
+				ApprovalID: approval.ApprovalID,
+				Status:     string(approval.Status),
+				ReceiptID:  approval.ReceiptID,
+			})
+		}
+	}
+
+	baseURL := ""
+	if r.Host != "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		baseURL = scheme + "://" + r.Host
+	}
+
+	zipBytes, err := pack.BuildZip(pack.Input{
+		Receipt:   receipt,
+		Context:   ctx,
+		Decision:  decision,
+		Policy:    policyBytes,
+		Approvals: approvals,
+	}, baseURL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", "attachment; filename=relia-pack.zip")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(zipBytes)
 }
 
 func (h *Handler) SlackInteractions(w http.ResponseWriter, r *http.Request) {

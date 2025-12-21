@@ -221,3 +221,74 @@ func TestApprovalsNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d", res.Code)
 	}
 }
+
+func TestVerifyEndpoint(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	claims := ActorContext{
+		Subject:  "repo:org/repo:ref:refs/heads/main",
+		Issuer:   "relia-dev",
+		Repo:     "org/repo",
+		Workflow: "terraform-prod",
+		RunID:    "123456",
+		SHA:      "abcdef123",
+	}
+
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/verify/"+resp.ReceiptID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestPackEndpoint(t *testing.T) {
+	os.Setenv("RELIA_DEV_TOKEN", "test-token")
+	defer os.Unsetenv("RELIA_DEV_TOKEN")
+
+	service, err := NewAuthorizeService("../../policies/relia.yaml")
+	if err != nil {
+		t.Fatalf("service: %v", err)
+	}
+
+	claims := ActorContext{
+		Subject:  "repo:org/repo:ref:refs/heads/main",
+		Issuer:   "relia-dev",
+		Repo:     "org/repo",
+		Workflow: "terraform-prod",
+		RunID:    "123456",
+		SHA:      "abcdef123",
+	}
+
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
+	req := httptest.NewRequest(http.MethodGet, "/v1/pack/"+resp.ReceiptID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+	if ct := res.Header().Get("Content-Type"); ct != "application/zip" {
+		t.Fatalf("expected zip content-type, got %s", ct)
+	}
+}

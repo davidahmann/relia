@@ -32,8 +32,8 @@ func captureOutput(t *testing.T, fn func()) string {
 }
 
 func TestMainOutput(t *testing.T) {
-	out := captureOutput(t, main)
-	if !strings.Contains(out, "relia-cli") {
+	out := captureOutput(t, usage)
+	if !strings.Contains(out, "Relia CLI") {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }

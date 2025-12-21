@@ -20,6 +20,8 @@ type AuthorizeService struct {
 	Store      *InMemoryIdemStore
 	Signer     ledger.Signer
 	Broker     aws.CredentialBroker
+	Artifacts  *ArtifactStore
+	PublicKey  ed25519.PublicKey
 }
 
 type AuthorizeResponse struct {
@@ -46,12 +48,15 @@ func NewAuthorizeService(policyPath string) (*AuthorizeService, error) {
 		return nil, err
 	}
 	priv := ed25519.NewKeyFromSeed(seed)
+	pub := priv.Public().(ed25519.PublicKey)
 
 	return &AuthorizeService{
 		PolicyPath: policyPath,
 		Store:      NewInMemoryIdemStore(),
 		Signer:     devSigner{keyID: "dev", priv: priv},
 		Broker:     aws.DevBroker{},
+		Artifacts:  NewArtifactStore(),
+		PublicKey:  pub,
 	}, nil
 }
 
@@ -85,6 +90,9 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	if err != nil {
 		return AuthorizeResponse{}, err
 	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutPolicy(loaded.Hash, loaded.Bytes)
+	}
 
 	input := policy.Input{Action: req.Action, Resource: req.Resource, Env: req.Env}
 	decisionResult := policy.Evaluate(loaded.Policy, loaded.Hash, input)
@@ -105,11 +113,17 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	if err != nil {
 		return AuthorizeResponse{}, err
 	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutContext(ctxRecord)
+	}
 
 	policyMeta := types.DecisionPolicy{PolicyID: loaded.Policy.PolicyID, PolicyVersion: loaded.Policy.PolicyVersion, PolicyHash: loaded.Hash}
 	decRecord, err := decision.BuildDecision(ctxRecord.ContextID, policyMeta, decisionResult.Verdict, decisionResult.ReasonCodes, decisionResult.RequireApproval, decisionResult.Risk, createdAt)
 	if err != nil {
 		return AuthorizeResponse{}, err
+	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutDecision(decRecord)
 	}
 
 	verdict := DecisionVerdict(decisionResult.Verdict)
@@ -165,6 +179,9 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	}, s.Signer)
 	if err != nil {
 		return AuthorizeResponse{}, err
+	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutReceipt(receipt)
 	}
 
 	rec := IdemRecord{
@@ -253,6 +270,9 @@ func (s *AuthorizeService) Approve(approvalID string, status string, createdAt s
 	if err != nil {
 		return "", err
 	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutReceipt(approvalReceipt)
+	}
 
 	approval.Status = approvalStatus
 	approval.ReceiptID = approvalReceipt.ReceiptID
@@ -306,6 +326,9 @@ func (s *AuthorizeService) issueCredentials(idem IdemRecord, claims ActorContext
 		}, s.Signer)
 		if err != nil {
 			return AuthorizeResponse{}, err
+		}
+		if s.Artifacts != nil {
+			s.Artifacts.PutReceipt(issuingReceipt)
 		}
 		latest = issuingReceipt.ReceiptID
 	}
@@ -361,6 +384,9 @@ func (s *AuthorizeService) issueCredentials(idem IdemRecord, claims ActorContext
 	}, s.Signer)
 	if err != nil {
 		return AuthorizeResponse{}, err
+	}
+	if s.Artifacts != nil {
+		s.Artifacts.PutReceipt(finalReceipt)
 	}
 
 	idem.Status = IdemAllowed
