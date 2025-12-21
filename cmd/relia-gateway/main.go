@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -8,11 +9,12 @@ import (
 
 	"github.com/davidahmann/relia/internal/api"
 	"github.com/davidahmann/relia/internal/auth"
+	"github.com/davidahmann/relia/internal/config"
 	"github.com/davidahmann/relia/internal/slack"
 )
 
 func main() {
-	if err := runFn(os.Getenv, listenAndServe, newServer); err != nil {
+	if err := runFn(os.Args[1:], os.Getenv, listenAndServe, newServer); err != nil {
 		fatalf("server error: %v", err)
 	}
 }
@@ -47,18 +49,32 @@ type envFn func(string) string
 type listenFn func(*http.Server) error
 type serverFactory func(addr string, policyPath string, signingSecret string) *http.Server
 
-func run(getenv envFn, listen listenFn, factory serverFactory) error {
-	addr := getenv("RELIA_LISTEN_ADDR")
-	if addr == "" {
-		addr = ":8080"
+func run(args []string, getenv envFn, listen listenFn, factory serverFactory) error {
+	fs := flag.NewFlagSet("relia-gateway", flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to relia config file")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	policyPath := getenv("RELIA_POLICY_PATH")
-	if policyPath == "" {
-		policyPath = "policies/relia.yaml"
+	cfgFile := *configPath
+	if cfgFile == "" {
+		cfgFile = getenv("RELIA_CONFIG_PATH")
 	}
 
-	signingSecret := getenv("RELIA_SLACK_SIGNING_SECRET")
+	var cfg config.Config
+	if cfgFile != "" {
+		loaded, err := config.Load(cfgFile)
+		if err != nil {
+			return err
+		}
+		cfg = loaded
+	}
+
+	addr := firstNonEmpty(getenv("RELIA_LISTEN_ADDR"), cfg.ListenAddr, ":8080")
+
+	policyPath := firstNonEmpty(getenv("RELIA_POLICY_PATH"), cfg.PolicyPath, "policies/relia.yaml")
+
+	signingSecret := firstNonEmpty(getenv("RELIA_SLACK_SIGNING_SECRET"), cfg.Slack.SigningSecret, "")
 
 	server := factory(addr, policyPath, signingSecret)
 
@@ -71,4 +87,13 @@ func run(getenv envFn, listen listenFn, factory serverFactory) error {
 
 func listenAndServe(server *http.Server) error {
 	return server.ListenAndServe()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -2,13 +2,19 @@
 
 ## Local setup
 
-- Install Go 1.22+.
+- Install Go 1.24+.
 - Copy `relia.yaml` and update paths or environment variables as needed.
 
 ## Run the gateway
 
 ```bash
 go run ./cmd/relia-gateway
+```
+
+## Run the gateway (Docker)
+
+```bash
+RELIA_DEV_TOKEN=dev docker compose -f deploy/docker-compose.yml up --build
 ```
 
 ## Run the CLI

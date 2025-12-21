@@ -1,0 +1,17 @@
+---
+services:
+  relia-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      RELIA_LISTEN_ADDR: ":8080"
+      RELIA_POLICY_PATH: "/app/policies/relia.yaml"
+      RELIA_CONFIG_PATH: "/app/relia.yaml"
+      RELIA_DEV_TOKEN: "${RELIA_DEV_TOKEN:-dev}"
+      RELIA_SLACK_SIGNING_SECRET: "${RELIA_SLACK_SIGNING_SECRET:-}"
+    volumes:
+      - ../policies:/app/policies:ro
+      - ../relia.yaml:/app/relia.yaml:ro

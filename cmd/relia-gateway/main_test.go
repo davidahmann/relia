@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -36,7 +38,7 @@ func TestRunDefaults(t *testing.T) {
 	}
 
 	getenv := func(string) string { return "" }
-	if err := run(getenv, listen, factory); err != nil {
+	if err := run(nil, getenv, listen, factory); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -58,8 +60,47 @@ func TestRunError(t *testing.T) {
 		return ""
 	}
 
-	if err := run(getenv, listen, factory); err == nil {
+	if err := run(nil, getenv, listen, factory); err == nil {
 		t.Fatalf("expected error")
+	}
+}
+
+func TestRunLoadsConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "relia.yaml")
+	if err := os.WriteFile(path, []byte("listen_addr: \":9999\"\npolicy_path: \"./policies/relia.yaml\"\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	factory := func(addr string, policyPath string, signingSecret string) *http.Server {
+		if addr != ":9999" {
+			t.Fatalf("expected addr from config, got %s", addr)
+		}
+		if policyPath != "./policies/relia.yaml" {
+			t.Fatalf("expected policy path from config, got %s", policyPath)
+		}
+		return &http.Server{Addr: addr}
+	}
+
+	listen := func(_ *http.Server) error { return http.ErrServerClosed }
+	getenv := func(key string) string {
+		if key == "RELIA_CONFIG_PATH" {
+			return path
+		}
+		return ""
+	}
+
+	if err := run(nil, getenv, listen, factory); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestFirstNonEmpty(t *testing.T) {
+	if got := firstNonEmpty("", "a", "b"); got != "a" {
+		t.Fatalf("expected a, got %s", got)
+	}
+	if got := firstNonEmpty("", ""); got != "" {
+		t.Fatalf("expected empty, got %s", got)
 	}
 }
 
@@ -78,7 +119,7 @@ func TestMainNoError(t *testing.T) {
 		fatalf = oldFatal
 	}()
 
-	runFn = func(envFn, listenFn, serverFactory) error {
+	runFn = func(args []string, envFn envFn, listenFn listenFn, serverFactory serverFactory) error {
 		return nil
 	}
 
@@ -101,7 +142,7 @@ func TestMainError(t *testing.T) {
 		fatalf = oldFatal
 	}()
 
-	runFn = func(envFn, listenFn, serverFactory) error {
+	runFn = func(args []string, envFn envFn, listenFn listenFn, serverFactory serverFactory) error {
 		return errors.New("boom")
 	}
 

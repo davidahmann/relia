@@ -13,3 +13,16 @@ issue. We will acknowledge receipt and work with you to resolve it.
 ## Supported Versions
 
 Only the latest release line is supported with security updates.
+
+## Secrets and configuration
+
+Relia is designed to run without committing secrets to the repo. Prefer
+environment variables and secret managers for:
+
+- `RELIA_DEV_TOKEN` (dev-only; do not use in production)
+- `RELIA_SLACK_SIGNING_SECRET`
+- `SLACK_BOT_TOKEN`
+
+The gateway can also load `relia.yaml` (supports `${ENV_VAR}` expansion) via:
+
+- `RELIA_CONFIG_PATH` (or `relia-gateway --config /path/to/relia.yaml`)
