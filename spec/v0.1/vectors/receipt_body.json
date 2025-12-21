@@ -1,0 +1,35 @@
+{
+  "decision_id": "sha256:dec",
+  "context_id": "sha256:ctx",
+  "schema": "relia.receipt.v0.1",
+  "created_at": "2025-12-20T16:34:14Z",
+  "policy": {
+    "policy_id": "relia-default",
+    "policy_version": "2025-12-20",
+    "policy_hash": "sha256:deadbeef"
+  },
+  "request": {
+    "request_id": "01JTEST00000000000000000000",
+    "action": "terraform.apply",
+    "resource": "aws:account:123456789012:stack/prod",
+    "env": "prod",
+    "intent": {
+      "change_id": "CHG-1234",
+      "ticket": null,
+      "reason": "Apply approved infra change"
+    }
+  },
+  "actor": {
+    "kind": "workload",
+    "subject": "repo:org/repo:ref:refs/heads/main",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "repo": "org/repo",
+    "workflow": "terraform-prod",
+    "run_id": "123456",
+    "sha": "abcdef123"
+  },
+  "approval": null,
+  "outcome": {
+    "status": "denied"
+  }
+}
