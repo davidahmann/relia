@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
+	"github.com/davidahmann/relia/internal/crypto"
 )
 
 func TestComputeIdemKeyDeterministic(t *testing.T) {

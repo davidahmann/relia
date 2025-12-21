@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/davidahmann/relia_oss/internal/api"
-	"github.com/davidahmann/relia_oss/internal/auth"
+	"github.com/davidahmann/relia/internal/api"
+	"github.com/davidahmann/relia/internal/auth"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidahmann/relia_oss/internal/auth"
+	"github.com/davidahmann/relia/internal/auth"
 )
 
 type Handler struct {

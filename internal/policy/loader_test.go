@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
+	"github.com/davidahmann/relia/internal/crypto"
 )
 
 func TestLoadPolicy(t *testing.T) {

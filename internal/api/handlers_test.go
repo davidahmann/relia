@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/davidahmann/relia_oss/internal/auth"
+	"github.com/davidahmann/relia/internal/auth"
 )
 
 func TestAuthorizeRequiresAuth(t *testing.T) {

@@ -3,7 +3,7 @@ package context
 import (
 	"testing"
 
-	"github.com/davidahmann/relia_oss/pkg/types"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 func TestBuildContextDeterministicID(t *testing.T) {

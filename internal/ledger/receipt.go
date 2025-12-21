@@ -3,8 +3,8 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
-	"github.com/davidahmann/relia_oss/pkg/types"
+	"github.com/davidahmann/relia/internal/crypto"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 const ReceiptSchema = "relia.receipt.v0.1"

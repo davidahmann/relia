@@ -3,7 +3,7 @@ package policy
 import (
 	"os"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
+	"github.com/davidahmann/relia/internal/crypto"
 	"gopkg.in/yaml.v3"
 )
 

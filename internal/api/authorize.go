@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
+	"github.com/davidahmann/relia/internal/crypto"
 )
 
 type AuthorizeRequest struct {

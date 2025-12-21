@@ -3,7 +3,7 @@ package decision
 import (
 	"testing"
 
-	"github.com/davidahmann/relia_oss/pkg/types"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 func TestBuildDecisionDeterministicID(t *testing.T) {

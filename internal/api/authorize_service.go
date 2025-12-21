@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/davidahmann/relia_oss/internal/aws"
-	"github.com/davidahmann/relia_oss/internal/context"
-	"github.com/davidahmann/relia_oss/internal/decision"
-	"github.com/davidahmann/relia_oss/internal/ledger"
-	"github.com/davidahmann/relia_oss/internal/policy"
-	"github.com/davidahmann/relia_oss/pkg/types"
+	"github.com/davidahmann/relia/internal/aws"
+	"github.com/davidahmann/relia/internal/context"
+	"github.com/davidahmann/relia/internal/decision"
+	"github.com/davidahmann/relia/internal/ledger"
+	"github.com/davidahmann/relia/internal/policy"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 type AuthorizeService struct {

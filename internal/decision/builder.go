@@ -1,8 +1,8 @@
 package decision
 
 import (
-	"github.com/davidahmann/relia_oss/internal/crypto"
-	"github.com/davidahmann/relia_oss/pkg/types"
+	"github.com/davidahmann/relia/internal/crypto"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 const DecisionSchema = "lumyn.decision.v0.1"

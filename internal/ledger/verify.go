@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 
-	"github.com/davidahmann/relia_oss/internal/crypto"
+	"github.com/davidahmann/relia/internal/crypto"
 )
 
 var (
