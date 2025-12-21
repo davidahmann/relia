@@ -55,16 +55,18 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	if rec, ok := s.Store.Get(idemKey); ok {
 		switch rec.Status {
 		case IdemAllowed:
-			return AuthorizeResponse{Verdict: string(VerdictAllow), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.ReceiptID}, nil
+			return AuthorizeResponse{Verdict: string(VerdictAllow), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.FinalReceiptID}, nil
 		case IdemDenied:
-			return AuthorizeResponse{Verdict: string(VerdictDeny), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.ReceiptID}, nil
+			return AuthorizeResponse{Verdict: string(VerdictDeny), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.FinalReceiptID}, nil
 		case IdemPendingApproval:
-			return AuthorizeResponse{Verdict: string(VerdictRequireApproval), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.ReceiptID, Approval: &struct {
+			return AuthorizeResponse{Verdict: string(VerdictRequireApproval), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.LatestReceiptID, Approval: &struct {
 				ApprovalID string `json:"approval_id"`
 				Status     string `json:"status"`
 			}{ApprovalID: rec.ApprovalID, Status: string(ApprovalPending)}}, nil
-		case IdemApprovedReady, IdemIssuing:
-			return AuthorizeResponse{Verdict: string(VerdictAllow), ContextID: rec.ContextID, DecisionID: rec.DecisionID, ReceiptID: rec.ReceiptID}, nil
+		case IdemApprovedReady:
+			return s.issueCredentials(rec, claims, req, createdAt, true)
+		case IdemIssuing:
+			return s.issueCredentials(rec, claims, req, createdAt, false)
 		case IdemErrored:
 			return AuthorizeResponse{Verdict: string(VerdictDeny), Error: "previous error"}, nil
 		}
@@ -111,6 +113,8 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 		approval = &types.ReceiptApproval{Required: true, ApprovalID: approvalID, Status: string(ApprovalPending)}
 	}
 
+	receiptPolicy := types.ReceiptPolicy(policyMeta)
+
 	outcome := types.ReceiptOutcome{Status: types.OutcomeDenied}
 	switch action {
 	case ActionReturnDenied:
@@ -118,12 +122,12 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	case ActionReturnPending:
 		outcome.Status = types.OutcomeApprovalPending
 	case ActionIssueCredentials:
-		outcome.Status = types.OutcomeIssuedCredentials
+		outcome.Status = types.OutcomeIssuingCredentials
+		status = IdemIssuing
 	default:
 		outcome.Status = types.OutcomeIssueFailed
+		status = IdemErrored
 	}
-
-	receiptPolicy := types.ReceiptPolicy(policyMeta)
 
 	receipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
 		CreatedAt:  createdAt,
@@ -155,13 +159,21 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 	}
 
 	rec := IdemRecord{
-		IdemKey:    idemKey,
-		Status:     status,
-		ApprovalID: approvalID,
-		ReceiptID:  receipt.ReceiptID,
-		ContextID:  ctxRecord.ContextID,
-		DecisionID: decRecord.DecisionID,
+		IdemKey:         idemKey,
+		Status:          status,
+		ApprovalID:      approvalID,
+		LatestReceiptID: receipt.ReceiptID,
+		FinalReceiptID:  receipt.ReceiptID,
+		ContextID:       ctxRecord.ContextID,
+		DecisionID:      decRecord.DecisionID,
+		PolicyHash:      policyMeta.PolicyHash,
 	}
+
+	if action == ActionReturnPending {
+		rec.FinalReceiptID = ""
+		s.Store.PutApproval(ApprovalRecord{ApprovalID: approvalID, Status: ApprovalPending, ReceiptID: receipt.ReceiptID})
+	}
+
 	s.Store.Put(rec)
 
 	resp := AuthorizeResponse{
@@ -182,10 +194,159 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 		resp.Verdict = string(VerdictDeny)
 	}
 	if action == ActionIssueCredentials {
-		resp.Verdict = string(VerdictAllow)
+		return s.issueCredentials(rec, claims, req, createdAt, false)
 	}
 
 	return resp, nil
+}
+
+func (s *AuthorizeService) Approve(approvalID string, status ApprovalStatus, createdAt string) (string, error) {
+	approval, ok := s.Store.GetApproval(approvalID)
+	if !ok {
+		return "", fmt.Errorf("approval not found")
+	}
+	if approval.Status == ApprovalApproved || approval.Status == ApprovalDenied {
+		return approval.ReceiptID, nil
+	}
+	if status != ApprovalApproved && status != ApprovalDenied {
+		return "", fmt.Errorf("invalid approval status")
+	}
+
+	idem, ok := s.findIdemByApproval(approvalID)
+	if !ok {
+		return "", fmt.Errorf("idempotency not found for approval")
+	}
+
+	outcome := types.ReceiptOutcome{Status: types.OutcomeApprovalDenied}
+	if status == ApprovalApproved {
+		outcome.Status = types.OutcomeApprovalApproved
+	}
+
+	approvalReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
+		CreatedAt:           createdAt,
+		IdemKey:             idem.IdemKey,
+		SupersedesReceiptID: &idem.LatestReceiptID,
+		ContextID:           idem.ContextID,
+		DecisionID:          idem.DecisionID,
+		Actor:               types.ReceiptActor{Kind: "approval", Subject: "slack"},
+		Request:             types.ReceiptRequest{RequestID: "approval", Action: "approve", Resource: idem.IdemKey, Env: ""},
+		Policy:              types.ReceiptPolicy{PolicyHash: idem.PolicyHash},
+		Approval: &types.ReceiptApproval{
+			Required:   true,
+			ApprovalID: approvalID,
+			Status:     string(status),
+		},
+		Outcome: outcome,
+	}, s.Signer)
+	if err != nil {
+		return "", err
+	}
+
+	approval.Status = status
+	approval.ReceiptID = approvalReceipt.ReceiptID
+	s.Store.PutApproval(approval)
+
+	idem.LatestReceiptID = approvalReceipt.ReceiptID
+	if status == ApprovalDenied {
+		idem.Status = IdemDenied
+		idem.FinalReceiptID = approvalReceipt.ReceiptID
+		s.Store.Put(idem)
+		return approvalReceipt.ReceiptID, nil
+	}
+
+	idem.Status = IdemApprovedReady
+	idem.FinalReceiptID = ""
+	s.Store.Put(idem)
+	return approvalReceipt.ReceiptID, nil
+}
+
+func (s *AuthorizeService) GetApproval(approvalID string) (ApprovalRecord, bool) {
+	return s.Store.GetApproval(approvalID)
+}
+
+func (s *AuthorizeService) issueCredentials(idem IdemRecord, claims ActorContext, req AuthorizeRequest, createdAt string, createIssuing bool) (AuthorizeResponse, error) {
+	latest := idem.LatestReceiptID
+	if createIssuing {
+		issuingReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
+			CreatedAt:           createdAt,
+			IdemKey:             idem.IdemKey,
+			SupersedesReceiptID: &latest,
+			ContextID:           idem.ContextID,
+			DecisionID:          idem.DecisionID,
+			Actor: types.ReceiptActor{
+				Kind:     "workload",
+				Subject:  claims.Subject,
+				Issuer:   claims.Issuer,
+				Repo:     claims.Repo,
+				Workflow: claims.Workflow,
+				RunID:    claims.RunID,
+				SHA:      claims.SHA,
+			},
+			Request: types.ReceiptRequest{
+				RequestID: req.RequestID,
+				Action:    req.Action,
+				Resource:  req.Resource,
+				Env:       req.Env,
+				Intent:    req.Intent,
+			},
+			Policy:  types.ReceiptPolicy{PolicyHash: idem.PolicyHash},
+			Outcome: types.ReceiptOutcome{Status: types.OutcomeIssuingCredentials},
+		}, s.Signer)
+		if err != nil {
+			return AuthorizeResponse{}, err
+		}
+		latest = issuingReceipt.ReceiptID
+	}
+
+	finalReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
+		CreatedAt:           createdAt,
+		IdemKey:             idem.IdemKey,
+		SupersedesReceiptID: &latest,
+		ContextID:           idem.ContextID,
+		DecisionID:          idem.DecisionID,
+		Actor: types.ReceiptActor{
+			Kind:     "workload",
+			Subject:  claims.Subject,
+			Issuer:   claims.Issuer,
+			Repo:     claims.Repo,
+			Workflow: claims.Workflow,
+			RunID:    claims.RunID,
+			SHA:      claims.SHA,
+		},
+		Request: types.ReceiptRequest{
+			RequestID: req.RequestID,
+			Action:    req.Action,
+			Resource:  req.Resource,
+			Env:       req.Env,
+			Intent:    req.Intent,
+		},
+		Policy:  types.ReceiptPolicy{PolicyHash: idem.PolicyHash},
+		Outcome: types.ReceiptOutcome{Status: types.OutcomeIssuedCredentials},
+	}, s.Signer)
+	if err != nil {
+		return AuthorizeResponse{}, err
+	}
+
+	idem.Status = IdemAllowed
+	idem.LatestReceiptID = finalReceipt.ReceiptID
+	idem.FinalReceiptID = finalReceipt.ReceiptID
+	s.Store.Put(idem)
+
+	return AuthorizeResponse{
+		Verdict:    string(VerdictAllow),
+		ContextID:  idem.ContextID,
+		DecisionID: idem.DecisionID,
+		ReceiptID:  finalReceipt.ReceiptID,
+	}, nil
+}
+
+func (s *AuthorizeService) findIdemByApproval(approvalID string) (IdemRecord, bool) {
+	for _, rec := range s.Store.items {
+		if rec.ApprovalID == approvalID {
+			return rec, true
+		}
+	}
+	return IdemRecord{}, false
 }
 
 type devSigner struct {

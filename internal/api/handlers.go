@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/davidahmann/relia_oss/internal/auth"
@@ -57,7 +58,28 @@ func (h *Handler) Approvals(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "approvals not implemented"})
+	if h.AuthorizeService == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "authorize service not configured"})
+		return
+	}
+
+	approvalID := strings.TrimPrefix(r.URL.Path, "/v1/approvals/")
+	if approvalID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing approval_id"})
+		return
+	}
+
+	approval, ok := h.AuthorizeService.GetApproval(approvalID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "approval not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"approval_id": approval.ApprovalID,
+		"status":      string(approval.Status),
+		"receipt_id":  approval.ReceiptID,
+	})
 }
 
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
