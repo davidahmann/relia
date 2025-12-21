@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/davidahmann/relia/internal/aws"
+	"github.com/davidahmann/relia/internal/ledger"
 )
 
 type errorBroker struct{}
@@ -39,11 +40,14 @@ rules:
 		t.Fatalf("write policy: %v", err)
 	}
 
-	service, err := NewAuthorizeService(policyPath)
+	service, err := NewAuthorizeService(NewAuthorizeServiceInput{
+		PolicyPath: policyPath,
+		Ledger:     ledger.NewInMemoryStore(),
+		Broker:     errorBroker{},
+	})
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}
-	service.Broker = errorBroker{}
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",

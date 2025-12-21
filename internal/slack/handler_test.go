@@ -114,3 +114,97 @@ func TestHandleInteractionsInvalidSignature(t *testing.T) {
 		t.Fatalf("expected 401, got %d", res.Code)
 	}
 }
+
+type errorApprover struct{}
+
+func (e errorApprover) Approve(string, string, string) (string, error) {
+	return "", fmt.Errorf("boom")
+}
+
+func TestHandleInteractionsNotConfigured(t *testing.T) {
+	h := &InteractionHandler{}
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", nil)
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", res.Code)
+	}
+}
+
+func TestHandleInteractionsBadQuery(t *testing.T) {
+	h := &InteractionHandler{Approver: &testApprover{}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString("%zz"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestHandleInteractionsInvalidPayloadJSON(t *testing.T) {
+	approver := &testApprover{}
+	h := &InteractionHandler{Approver: approver}
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString("payload={invalid"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestHandleInteractionsMissingActions(t *testing.T) {
+	approver := &testApprover{}
+	h := &InteractionHandler{Approver: approver}
+
+	form := url.Values{}
+	form.Set("payload", `{"actions":[]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestHandleInteractionsParseActionErrors(t *testing.T) {
+	approver := &testApprover{}
+	h := &InteractionHandler{Approver: approver}
+
+	form := url.Values{}
+	form.Set("payload", `{"actions":[{"value":""}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+
+	form = url.Values{}
+	form.Set("payload", `{"actions":[{"value":"not-colon"}]}`)
+	req = httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res = httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.Code)
+	}
+}
+
+func TestHandleInteractionsApproverError(t *testing.T) {
+	payload := `{"actions":[{"action_id":"approve","value":"appr-1"}]}`
+	form := url.Values{}
+	form.Set("payload", payload)
+
+	h := &InteractionHandler{Approver: errorApprover{}}
+	req := httptest.NewRequest(http.MethodPost, "/v1/slack/interactions", bytes.NewBufferString(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res := httptest.NewRecorder()
+	h.HandleInteractions(res, req)
+	if res.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", res.Code)
+	}
+}

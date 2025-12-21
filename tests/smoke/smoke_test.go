@@ -18,7 +18,7 @@ func TestSmoke(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := api.NewAuthorizeService("../../policies/relia.yaml")
+	service, err := api.NewAuthorizeService(api.NewAuthorizeServiceInput{PolicyPath: "../../policies/relia.yaml"})
 	if err != nil {
 		t.Fatalf("authorize service: %v", err)
 	}

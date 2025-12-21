@@ -22,10 +22,7 @@ func TestSlackApprovalFlowEndToEnd(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	signingSecret := "secret"
 	h := &Handler{

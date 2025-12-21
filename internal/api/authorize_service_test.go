@@ -3,10 +3,7 @@ package api
 import "testing"
 
 func TestAuthorizeRequireApproval(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -37,10 +34,7 @@ func TestAuthorizeRequireApproval(t *testing.T) {
 }
 
 func TestAuthorizeAllow(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -74,10 +68,7 @@ func TestAuthorizeAllow(t *testing.T) {
 }
 
 func TestAuthorizeIdempotentPending(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -112,10 +103,7 @@ func TestAuthorizeIdempotentPending(t *testing.T) {
 }
 
 func TestAuthorizeIdempotentAllow(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -147,10 +135,7 @@ func TestAuthorizeIdempotentAllow(t *testing.T) {
 }
 
 func TestAuthorizeApproveFlow(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -196,10 +181,7 @@ func TestAuthorizeApproveFlow(t *testing.T) {
 }
 
 func TestAuthorizeApproveDenied(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -239,22 +221,16 @@ func TestAuthorizeApproveDenied(t *testing.T) {
 }
 
 func TestApproveNotFound(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
-	_, err = svc.Approve("missing", string(ApprovalApproved), "2025-12-20T16:35:00Z")
+	_, err := svc.Approve("missing", string(ApprovalApproved), "2025-12-20T16:35:00Z")
 	if err == nil {
 		t.Fatalf("expected error for missing approval")
 	}
 }
 
 func TestApproveInvalidStatus(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -280,10 +256,7 @@ func TestApproveInvalidStatus(t *testing.T) {
 }
 
 func TestAuthorizeDenyUnknownProdAction(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -310,19 +283,17 @@ func TestAuthorizeDenyUnknownProdAction(t *testing.T) {
 }
 
 func TestAuthorizeMissingActorFields(t *testing.T) {
-	svc, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	svc := newTestService(t, "../../policies/relia.yaml")
 
-	_, err = svc.Authorize(ActorContext{}, AuthorizeRequest{Action: "a", Resource: "r", Env: "e"}, "2025-12-20T16:34:14Z")
+	_, err := svc.Authorize(ActorContext{}, AuthorizeRequest{Action: "a", Resource: "r", Env: "e"}, "2025-12-20T16:34:14Z")
 	if err == nil {
 		t.Fatalf("expected error for missing actor fields")
 	}
 }
 
 func TestAuthorizeMissingPolicy(t *testing.T) {
-	svc := &AuthorizeService{PolicyPath: "missing.yaml", Store: NewInMemoryIdemStore(), Signer: devSigner{keyID: "dev"}}
+	svc := newTestService(t, "../../policies/relia.yaml")
+	svc.PolicyPath = "missing.yaml"
 
 	_, err := svc.Authorize(ActorContext{Subject: "sub", Issuer: "iss", Repo: "repo", RunID: "run"}, AuthorizeRequest{Action: "a", Resource: "r", Env: "e"}, "2025-12-20T16:34:14Z")
 	if err == nil {

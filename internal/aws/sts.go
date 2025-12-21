@@ -10,10 +10,11 @@ type Credentials struct {
 }
 
 type AssumeRoleInput struct {
-	RoleARN    string
-	Region     string
-	TTLSeconds int
-	Subject    string
+	RoleARN          string
+	Region           string
+	TTLSeconds       int
+	Subject          string
+	WebIdentityToken string
 }
 
 type CredentialBroker interface {

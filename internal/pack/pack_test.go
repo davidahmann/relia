@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/ed25519"
+	"errors"
 	"testing"
 	"time"
 
@@ -105,6 +106,13 @@ func TestBuildFilesRequiresPolicy(t *testing.T) {
 	}
 }
 
+func TestBuildZipRequiresPolicy(t *testing.T) {
+	_, err := BuildZip(Input{}, "")
+	if err == nil {
+		t.Fatalf("expected error for missing policy")
+	}
+}
+
 func TestWriteZip(t *testing.T) {
 	files := map[string][]byte{
 		"a.txt": []byte("alpha"),
@@ -120,5 +128,35 @@ func TestWriteZip(t *testing.T) {
 	}
 	if len(reader.File) != 2 {
 		t.Fatalf("expected 2 files, got %d", len(reader.File))
+	}
+}
+
+type failingWriter struct{}
+
+func (f failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func TestWriteZipWriterError(t *testing.T) {
+	files := map[string][]byte{"a.txt": []byte("alpha")}
+	if err := WriteZip(failingWriter{}, files); err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestBuildFilesInvalidReceiptJSON(t *testing.T) {
+	_, err := BuildFiles(Input{
+		Receipt: ledger.StoredReceipt{
+			ReceiptID:  "r",
+			BodyDigest: "digest",
+			BodyJSON:   []byte("not-json"),
+			KeyID:      "kid",
+			Sig:        []byte("sig"),
+			PolicyHash: "ph",
+		},
+		Policy: []byte("policy_id: x\n"),
+	}, "")
+	if err == nil {
+		t.Fatalf("expected error")
 	}
 }

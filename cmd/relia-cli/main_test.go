@@ -10,220 +10,252 @@ import (
 	"testing"
 )
 
-func TestRunUsage(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+func TestRun_UsageAndUnknown(t *testing.T) {
+	var out, errOut bytes.Buffer
 
-	code := run([]string{"relia"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("expected code 2, got %d", code)
+	if code := run([]string{"relia"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
 	}
-	if !strings.Contains(stderr.String(), "Relia CLI") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
+
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"relia", "nope"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
+	if !strings.Contains(errOut.String(), "Usage:") {
+		t.Fatalf("expected usage output")
 	}
 }
 
-func TestVerifySuccess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			w.WriteHeader(http.StatusUnauthorized)
+func TestHandleVerify(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/verify/r1" {
+			http.NotFound(w, r)
 			return
 		}
+		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true}`))
-	}))
-	defer server.Close()
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "verify", "--addr", server.URL, "--token", "test-token", "r1"}, &stdout, &stderr)
+	var out, errOut bytes.Buffer
+	code := handleVerify([]string{"--addr", srv.URL, "--token", "tok", "r1"}, &out, &errOut)
 	if code != 0 {
-		t.Fatalf("expected code 0, got %d: %s", code, stderr.String())
+		t.Fatalf("expected 0, got %d stderr=%s", code, errOut.String())
 	}
-	if !strings.Contains(stdout.String(), "valid=true") {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
+	if !strings.Contains(out.String(), "valid=true") {
+		t.Fatalf("unexpected stdout: %s", out.String())
 	}
-}
 
-func TestVerifyInvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("{invalid"))
-	}))
-	defer server.Close()
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "verify", "--addr", server.URL, "r1"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("expected code 1, got %d", code)
-	}
-	if !strings.Contains(stderr.String(), "invalid response") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
-	}
-}
-
-func TestVerifyJSONOutput(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true}`))
-	}))
-	defer server.Close()
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "verify", "--addr", server.URL, "--json", "r1"}, &stdout, &stderr)
+	out.Reset()
+	errOut.Reset()
+	code = handleVerify([]string{"--addr", srv.URL, "--token", "tok", "--json", "r1"}, &out, &errOut)
 	if code != 0 {
-		t.Fatalf("expected code 0, got %d: %s", code, stderr.String())
+		t.Fatalf("expected 0, got %d", code)
 	}
-	if !strings.Contains(stdout.String(), `"receipt_id":"r1"`) {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
+	if strings.TrimSpace(out.String()) != `{"receipt_id":"r1","valid":true}` {
+		t.Fatalf("unexpected json stdout: %s", out.String())
 	}
 }
 
-func TestVerifyNonOK(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"boom"}`))
+func TestHandleVerify_NonOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"nope"}`))
 	}))
-	defer server.Close()
+	defer srv.Close()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "verify", "--addr", server.URL, "r1"}, &stdout, &stderr)
+	var out, errOut bytes.Buffer
+	code := handleVerify([]string{"--addr", srv.URL, "--token", "tok", "missing"}, &out, &errOut)
 	if code != 1 {
-		t.Fatalf("expected code 1, got %d", code)
-	}
-	if !strings.Contains(stderr.String(), "verify failed") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
+		t.Fatalf("expected 1, got %d", code)
 	}
 }
 
-func TestVerifyValidFalse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestHandleVerify_Errors(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := handleVerify([]string{}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code := handleVerify([]string{"--nope"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
+
+	invalidJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	defer invalidJSON.Close()
+
+	out.Reset()
+	errOut.Reset()
+	if code := handleVerify([]string{"--addr", invalidJSON.URL, "r1"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+
+	validFalse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":false,"error":"bad"}`))
 	}))
-	defer server.Close()
+	defer validFalse.Close()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "verify", "--addr", server.URL, "r1"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("expected code 1, got %d", code)
+	out.Reset()
+	errOut.Reset()
+	if code := handleVerify([]string{"--addr", validFalse.URL, "r1"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
 	}
-	if !strings.Contains(stdout.String(), "valid=false") {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
+	if !strings.Contains(out.String(), "valid=false") {
+		t.Fatalf("unexpected stdout: %s", out.String())
 	}
 }
 
-func TestPackSuccess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/zip")
-		_, _ = w.Write([]byte("zip-content"))
+func TestHandlePack(t *testing.T) {
+	payload := []byte("zip-bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/pack/r1" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
 	}))
-	defer server.Close()
+	defer srv.Close()
 
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "out", "relia-pack.zip")
+	tmp := t.TempDir()
+	outPath := filepath.Join(tmp, "out", "pack.zip")
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "pack", "--addr", server.URL, "--out", outPath, "r1"}, &stdout, &stderr)
+	var out, errOut bytes.Buffer
+	code := handlePack([]string{"--addr", srv.URL, "--token", "tok", "--out", outPath, "r1"}, &out, &errOut)
 	if code != 0 {
-		t.Fatalf("expected code 0, got %d: %s", code, stderr.String())
+		t.Fatalf("expected 0, got %d stderr=%s", code, errOut.String())
 	}
-	if _, err := os.Stat(outPath); err != nil {
-		t.Fatalf("expected output file: %v", err)
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read out: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "wrote") {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
+	if string(got) != string(payload) {
+		t.Fatalf("output mismatch")
 	}
 }
 
-func TestPackFailureStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte("nope"))
+func TestHandlePack_NonOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("bad"))
 	}))
-	defer server.Close()
+	defer srv.Close()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "pack", "--addr", server.URL, "r1"}, &stdout, &stderr)
+	var out, errOut bytes.Buffer
+	code := handlePack([]string{"--addr", srv.URL, "--token", "tok", "--out", filepath.Join(t.TempDir(), "p.zip"), "r1"}, &out, &errOut)
 	if code != 1 {
-		t.Fatalf("expected code 1, got %d", code)
-	}
-	if !strings.Contains(stderr.String(), "pack failed") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
+		t.Fatalf("expected 1, got %d", code)
 	}
 }
 
-func TestPolicyLint(t *testing.T) {
+func TestHandlePack_Errors(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := handlePack([]string{}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
+
+	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("x"))
+	}))
+	defer okSrv.Close()
+
+	tmp := t.TempDir()
+	parentFile := filepath.Join(tmp, "file")
+	if err := os.WriteFile(parentFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	outPath := filepath.Join(parentFile, "pack.zip") // parent is a file, mkdir should fail
+
+	out.Reset()
+	errOut.Reset()
+	if code := handlePack([]string{"--addr", okSrv.URL, "--out", outPath, "r1"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code := handlePack([]string{"--addr", okSrv.URL, "--out", tmp, "r1"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
+	}
+}
+
+func TestHandlePolicyLint(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "policy.yaml")
-	if err := os.WriteFile(path, []byte("policy_id: relia-default\npolicy_version: \"2025-12-20\"\n"), 0o600); err != nil {
-		t.Fatalf("write policy: %v", err)
+	policyYAML := `
+policy_id: test
+policy_version: "1"
+defaults:
+  ttl_seconds: 900
+  require_approval: false
+  deny: false
+rules:
+  - id: allow
+    match:
+      action: "terraform.apply"
+      env: "dev"
+    effect:
+      ttl_seconds: 900
+      aws_role_arn: "arn:aws:iam::123456789012:role/test"
+`
+	if err := os.WriteFile(path, []byte(policyYAML), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
 	}
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "policy", "lint", path}, &stdout, &stderr)
+	var out, errOut bytes.Buffer
+	code := run([]string{"relia", "policy", "lint", path}, &out, &errOut)
 	if code != 0 {
-		t.Fatalf("expected code 0, got %d: %s", code, stderr.String())
+		t.Fatalf("expected 0, got %d stderr=%s", code, errOut.String())
 	}
-	if !strings.Contains(stdout.String(), "ok policy_id=") {
-		t.Fatalf("unexpected stdout: %q", stdout.String())
-	}
-}
-
-func TestPolicyLintMissingArg(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run([]string{"relia", "policy", "lint"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("expected code 2, got %d", code)
+	if !strings.Contains(out.String(), "ok policy_id=") {
+		t.Fatalf("unexpected stdout: %s", out.String())
 	}
 }
 
-func TestPolicyUnknownSubcommand(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+func TestHandlePolicy_Errors(t *testing.T) {
+	var out, errOut bytes.Buffer
 
-	code := run([]string{"relia", "policy", "unknown"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("expected code 2, got %d", code)
+	if code := run([]string{"relia", "policy"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
 	}
-}
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"relia", "policy", "nope"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
 
-func TestRunUnknownCommand(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"relia", "policy", "lint"}, &out, &errOut); code != 2 {
+		t.Fatalf("expected 2, got %d", code)
+	}
 
-	code := run([]string{"relia", "unknown"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("expected code 2, got %d", code)
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"relia", "policy", "lint", "missing.yaml"}, &out, &errOut); code != 1 {
+		t.Fatalf("expected 1, got %d", code)
 	}
 }
 
 func TestEnvOrDefault(t *testing.T) {
-	os.Setenv("RELIA_TEST_ENV", "value")
-	defer os.Unsetenv("RELIA_TEST_ENV")
-
-	if got := envOrDefault("RELIA_TEST_ENV", "fallback"); got != "value" {
-		t.Fatalf("expected env value, got %s", got)
+	t.Setenv("RELIA_TEST_ENV", "x")
+	if got := envOrDefault("RELIA_TEST_ENV", "y"); got != "x" {
+		t.Fatalf("expected x, got %s", got)
 	}
-	if got := envOrDefault("RELIA_TEST_MISSING", "fallback"); got != "fallback" {
-		t.Fatalf("expected fallback, got %s", got)
+	if got := envOrDefault("RELIA_MISSING_ENV", "y"); got != "y" {
+		t.Fatalf("expected y, got %s", got)
 	}
 }
 
-func TestMainExitCode(t *testing.T) {
+func TestMainCallsExit(t *testing.T) {
 	oldExit := exitFn
 	oldArgs := os.Args
 	defer func() {
@@ -231,15 +263,12 @@ func TestMainExitCode(t *testing.T) {
 		os.Args = oldArgs
 	}()
 
-	var code int
-	exitFn = func(c int) {
-		code = c
-	}
+	var got int
+	exitFn = func(code int) { got = code }
 	os.Args = []string{"relia"}
-
 	main()
 
-	if code != 2 {
-		t.Fatalf("expected exit code 2, got %d", code)
+	if got != 2 {
+		t.Fatalf("expected exit code 2, got %d", got)
 	}
 }

@@ -3,7 +3,7 @@ package ledger
 import "testing"
 
 func TestInMemoryStoreMethods(t *testing.T) {
-	store := &InMemoryStore{}
+	store := NewInMemoryStore()
 
 	err := store.WithTx(func(tx Tx) error {
 		if err := tx.PutContext(ContextRecord{ContextID: "ctx", CreatedAt: "now"}); err != nil {
@@ -19,6 +19,9 @@ func TestInMemoryStoreMethods(t *testing.T) {
 			return err
 		}
 		if err := tx.PutIdempotencyKey(IdempotencyKey{IdemKey: "idem", Status: "pending_approval"}); err != nil {
+			return err
+		}
+		if err := tx.PutPolicyVersion(PolicyVersionRecord{PolicyHash: "ph", PolicyID: "pid", PolicyVersion: "pv"}); err != nil {
 			return err
 		}
 		return nil
@@ -41,5 +44,8 @@ func TestInMemoryStoreMethods(t *testing.T) {
 	}
 	if err := store.PutIdempotencyKey(IdempotencyKey{IdemKey: "idem", Status: "pending_approval"}); err != nil {
 		t.Fatalf("put idempotency: %v", err)
+	}
+	if err := store.PutPolicyVersion(PolicyVersionRecord{PolicyHash: "ph", PolicyID: "pid", PolicyVersion: "pv"}); err != nil {
+		t.Fatalf("put policy: %v", err)
 	}
 }

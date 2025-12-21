@@ -19,6 +19,7 @@ type Claims struct {
 	Workflow string
 	RunID    string
 	SHA      string
+	Token    string
 }
 
 type Authenticator interface {
@@ -27,10 +28,18 @@ type Authenticator interface {
 
 type MultiAuthenticator struct {
 	DevToken string
+	OIDC     *GitHubOIDCAuthenticator
 }
 
 func NewAuthenticatorFromEnv() *MultiAuthenticator {
-	return &MultiAuthenticator{DevToken: os.Getenv("RELIA_DEV_TOKEN")}
+	audience := os.Getenv("RELIA_GITHUB_OIDC_AUDIENCE")
+	if audience == "" {
+		audience = "relia"
+	}
+	return &MultiAuthenticator{
+		DevToken: os.Getenv("RELIA_DEV_TOKEN"),
+		OIDC:     NewGitHubOIDCAuthenticator(audience),
+	}
 }
 
 func (a *MultiAuthenticator) Authenticate(r *http.Request) (Claims, error) {
@@ -41,7 +50,15 @@ func (a *MultiAuthenticator) Authenticate(r *http.Request) (Claims, error) {
 
 	if a.DevToken != "" {
 		if bearer == a.DevToken {
-			return Claims{Subject: "dev", Issuer: "relia-dev", Repo: "dev/repo", Workflow: "dev", RunID: "dev", SHA: "dev"}, nil
+			return Claims{Subject: "dev", Issuer: "relia-dev", Repo: "dev/repo", Workflow: "dev", RunID: "dev", SHA: "dev", Token: bearer}, nil
+		}
+	}
+
+	if a.OIDC != nil {
+		claims, err := a.OIDC.AuthenticateBearer(bearer)
+		if err == nil {
+			claims.Token = bearer
+			return claims, nil
 		}
 	}
 

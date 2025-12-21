@@ -41,27 +41,7 @@ func BuildZip(input Input, baseURL string) ([]byte, error) {
 	}
 
 	buf := bytes.NewBuffer(nil)
-	writer := zip.NewWriter(buf)
-
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		entry, err := writer.Create(name)
-		if err != nil {
-			_ = writer.Close()
-			return nil, err
-		}
-		if _, err := entry.Write(files[name]); err != nil {
-			_ = writer.Close()
-			return nil, err
-		}
-	}
-
-	if err := writer.Close(); err != nil {
+	if err := WriteZip(buf, files); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

@@ -32,6 +32,7 @@ type ActorContext struct {
 	Workflow string
 	RunID    string
 	SHA      string
+	Token    string
 }
 
 // ComputeIdemKey derives a deterministic idempotency key from actor + request.

@@ -15,10 +15,7 @@ func TestAuthorizeRequiresAuth(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 
@@ -35,10 +32,7 @@ func TestAuthorizeWithDevToken(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 
@@ -56,10 +50,7 @@ func TestAuthorizeInvalidJSON(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 
@@ -93,10 +84,7 @@ func TestOtherEndpointsRequireAuth(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 
@@ -143,10 +131,7 @@ func TestApprovalsEndpoint(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -157,22 +142,16 @@ func TestApprovalsEndpoint(t *testing.T) {
 		SHA:      "abcdef123",
 	}
 
-	_, err = service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
+	resp, err := service.Authorize(claims, AuthorizeRequest{Action: "terraform.apply", Resource: "res", Env: "prod"}, "2025-12-20T16:34:14Z")
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
-
-	var approvalID string
-	for _, approval := range service.Store.approvals {
-		approvalID = approval.ApprovalID
-		break
-	}
-	if approvalID == "" {
+	if resp.Approval == nil || resp.Approval.ApprovalID == "" {
 		t.Fatalf("expected approval id")
 	}
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
-	req := httptest.NewRequest(http.MethodGet, "/v1/approvals/"+approvalID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/approvals/"+resp.Approval.ApprovalID, nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	res := httptest.NewRecorder()
 	router.ServeHTTP(res, req)
@@ -186,10 +165,7 @@ func TestApprovalsMissingID(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/approvals/", nil)
@@ -206,10 +182,7 @@ func TestApprovalsNotFound(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/approvals/missing", nil)
@@ -226,10 +199,7 @@ func TestVerifyEndpoint(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -260,10 +230,7 @@ func TestPackEndpoint(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -297,10 +264,7 @@ func TestVerifyMissingReceiptID(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/verify/", nil)
@@ -317,10 +281,7 @@ func TestVerifyReceiptNotFound(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/verify/missing", nil)
@@ -337,10 +298,7 @@ func TestVerifyInvalidSignature(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -356,12 +314,14 @@ func TestVerifyInvalidSignature(t *testing.T) {
 		t.Fatalf("authorize: %v", err)
 	}
 
-	receipt, ok := service.Artifacts.GetReceipt(resp.ReceiptID)
+	receipt, ok := service.Ledger.GetReceipt(resp.ReceiptID)
 	if !ok {
 		t.Fatalf("receipt missing")
 	}
 	receipt.Sig = []byte("bad")
-	service.Artifacts.PutReceipt(receipt)
+	if err := service.Ledger.PutReceipt(receipt); err != nil {
+		t.Fatalf("put receipt: %v", err)
+	}
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/verify/"+resp.ReceiptID, nil)
@@ -378,10 +338,7 @@ func TestPackMissingReceiptID(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/pack/", nil)
@@ -398,10 +355,7 @@ func TestPackReceiptNotFound(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/pack/missing", nil)
@@ -418,10 +372,7 @@ func TestPackMissingContext(t *testing.T) {
 	os.Setenv("RELIA_DEV_TOKEN", "test-token")
 	defer os.Unsetenv("RELIA_DEV_TOKEN")
 
-	service, err := NewAuthorizeService("../../policies/relia.yaml")
-	if err != nil {
-		t.Fatalf("service: %v", err)
-	}
+	service := newTestService(t, "../../policies/relia.yaml")
 
 	claims := ActorContext{
 		Subject:  "repo:org/repo:ref:refs/heads/main",
@@ -437,12 +388,14 @@ func TestPackMissingContext(t *testing.T) {
 		t.Fatalf("authorize: %v", err)
 	}
 
-	receipt, ok := service.Artifacts.GetReceipt(resp.ReceiptID)
+	receipt, ok := service.Ledger.GetReceipt(resp.ReceiptID)
 	if !ok {
 		t.Fatalf("receipt missing")
 	}
 	receipt.ContextID = "missing"
-	service.Artifacts.PutReceipt(receipt)
+	if err := service.Ledger.PutReceipt(receipt); err != nil {
+		t.Fatalf("put receipt: %v", err)
+	}
 
 	router := NewRouter(&Handler{Auth: auth.NewAuthenticatorFromEnv(), AuthorizeService: service})
 	req := httptest.NewRequest(http.MethodGet, "/v1/pack/"+resp.ReceiptID, nil)

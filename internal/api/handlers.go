@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/davidahmann/relia/internal/ledger"
 	"github.com/davidahmann/relia/internal/pack"
 	"github.com/davidahmann/relia/internal/slack"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 type Handler struct {
@@ -47,6 +49,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		Workflow: claims.Workflow,
 		RunID:    claims.RunID,
 		SHA:      claims.SHA,
+		Token:    claims.Token,
 	}
 
 	resp, err := h.AuthorizeService.Authorize(actor, req, time.Now().UTC().Format(time.RFC3339))
@@ -81,8 +84,7 @@ func (h *Handler) Approvals(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"approval_id": approval.ApprovalID,
-		"status":      string(approval.Status),
-		"receipt_id":  approval.ReceiptID,
+		"status":      approval.Status,
 	})
 }
 
@@ -90,7 +92,7 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	if h.AuthorizeService == nil || h.AuthorizeService.Artifacts == nil {
+	if h.AuthorizeService == nil || h.AuthorizeService.Ledger == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "verify not implemented"})
 		return
 	}
@@ -101,7 +103,7 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	receipt, ok := h.AuthorizeService.Artifacts.GetReceipt(receiptID)
+	receiptRec, ok := h.AuthorizeService.Ledger.GetReceipt(receiptID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "receipt not found"})
 		return
@@ -112,7 +114,14 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ledger.VerifyReceipt(receipt, h.AuthorizeService.PublicKey)
+	stored := ledger.StoredReceipt{
+		ReceiptID:  receiptRec.ReceiptID,
+		BodyDigest: receiptRec.BodyDigest,
+		BodyJSON:   receiptRec.BodyJSON,
+		KeyID:      receiptRec.KeyID,
+		Sig:        receiptRec.Sig,
+	}
+	err := ledger.VerifyReceipt(stored, h.AuthorizeService.PublicKey)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"receipt_id": receiptID,
@@ -122,9 +131,24 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var body map[string]any
+	if err := json.Unmarshal(receiptRec.BodyJSON, &body); err == nil {
+		body["integrity"] = map[string]any{
+			"body_digest": receiptRec.BodyDigest,
+			"signatures": []map[string]any{
+				{
+					"alg":    "Ed25519",
+					"key_id": receiptRec.KeyID,
+					"sig":    "base64:" + base64.StdEncoding.EncodeToString(receiptRec.Sig),
+				},
+			},
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"receipt_id": receiptID,
 		"valid":      true,
+		"receipt":    body,
 	})
 }
 
@@ -132,7 +156,7 @@ func (h *Handler) Pack(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	if h.AuthorizeService == nil || h.AuthorizeService.Artifacts == nil {
+	if h.AuthorizeService == nil || h.AuthorizeService.Ledger == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "pack not implemented"})
 		return
 	}
@@ -143,37 +167,37 @@ func (h *Handler) Pack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	receipt, ok := h.AuthorizeService.Artifacts.GetReceipt(receiptID)
+	receiptRec, ok := h.AuthorizeService.Ledger.GetReceipt(receiptID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "receipt not found"})
 		return
 	}
 
-	ctx, ok := h.AuthorizeService.Artifacts.GetContext(receipt.ContextID)
+	ctxRec, ok := h.AuthorizeService.Ledger.GetContext(receiptRec.ContextID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "context not found"})
 		return
 	}
 
-	decision, ok := h.AuthorizeService.Artifacts.GetDecision(receipt.DecisionID)
+	decisionRec, ok := h.AuthorizeService.Ledger.GetDecision(receiptRec.DecisionID)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "decision not found"})
 		return
 	}
 
-	policyBytes, ok := h.AuthorizeService.Artifacts.GetPolicy(receipt.PolicyHash)
+	policyVersion, ok := h.AuthorizeService.Ledger.GetPolicyVersion(receiptRec.PolicyHash)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "policy not found"})
 		return
 	}
 
 	approvals := []pack.ApprovalRecord{}
-	if receipt.ApprovalID != nil {
-		if approval, ok := h.AuthorizeService.GetApproval(*receipt.ApprovalID); ok {
+	if receiptRec.ApprovalID != nil {
+		if approval, ok := h.AuthorizeService.GetApproval(*receiptRec.ApprovalID); ok {
 			approvals = append(approvals, pack.ApprovalRecord{
 				ApprovalID: approval.ApprovalID,
-				Status:     string(approval.Status),
-				ReceiptID:  approval.ReceiptID,
+				Status:     approval.Status,
+				ReceiptID:  receiptRec.ReceiptID,
 			})
 		}
 	}
@@ -187,11 +211,38 @@ func (h *Handler) Pack(w http.ResponseWriter, r *http.Request) {
 		baseURL = scheme + "://" + r.Host
 	}
 
+	var ctx types.ContextRecord
+	if err := json.Unmarshal(ctxRec.BodyJSON, &ctx); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid stored context"})
+		return
+	}
+	var dec types.DecisionRecord
+	if err := json.Unmarshal(decisionRec.BodyJSON, &dec); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid stored decision"})
+		return
+	}
+
 	zipBytes, err := pack.BuildZip(pack.Input{
-		Receipt:   receipt,
+		Receipt: ledger.StoredReceipt{
+			ReceiptID:           receiptRec.ReceiptID,
+			BodyDigest:          receiptRec.BodyDigest,
+			BodyJSON:            receiptRec.BodyJSON,
+			KeyID:               receiptRec.KeyID,
+			Sig:                 receiptRec.Sig,
+			IdemKey:             receiptRec.IdemKey,
+			CreatedAt:           receiptRec.CreatedAt,
+			SupersedesReceiptID: receiptRec.SupersedesReceiptID,
+			ContextID:           receiptRec.ContextID,
+			DecisionID:          receiptRec.DecisionID,
+			OutcomeStatus:       types.OutcomeStatus(receiptRec.OutcomeStatus),
+			ApprovalID:          receiptRec.ApprovalID,
+			PolicyHash:          receiptRec.PolicyHash,
+			Final:               receiptRec.Final,
+			ExpiresAt:           receiptRec.ExpiresAt,
+		},
 		Context:   ctx,
-		Decision:  decision,
-		Policy:    policyBytes,
+		Decision:  dec,
+		Policy:    []byte(policyVersion.PolicyYAML),
 		Approvals: approvals,
 	}, baseURL)
 	if err != nil {
