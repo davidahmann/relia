@@ -16,7 +16,12 @@ func main() {
 		addr = ":8080"
 	}
 
-	server := newServer(addr)
+	policyPath := os.Getenv("RELIA_POLICY_PATH")
+	if policyPath == "" {
+		policyPath = "policies/relia.yaml"
+	}
+
+	server := newServer(addr, policyPath)
 
 	log.Printf("relia-gateway listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -24,8 +29,16 @@ func main() {
 	}
 }
 
-func newServer(addr string) *http.Server {
-	h := &api.Handler{Auth: auth.NewAuthenticatorFromEnv()}
+func newServer(addr string, policyPath string) *http.Server {
+	authorizeService, err := api.NewAuthorizeService(policyPath)
+	if err != nil {
+		log.Fatalf("authorize service error: %v", err)
+	}
+
+	h := &api.Handler{
+		Auth:             auth.NewAuthenticatorFromEnv(),
+		AuthorizeService: authorizeService,
+	}
 	return &http.Server{
 		Addr:              addr,
 		Handler:           api.NewRouter(h),

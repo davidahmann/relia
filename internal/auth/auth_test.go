@@ -33,6 +33,9 @@ func TestAuthenticateDevToken(t *testing.T) {
 	if claims.Subject != "dev" {
 		t.Fatalf("unexpected subject: %s", claims.Subject)
 	}
+	if claims.Repo == "" || claims.RunID == "" {
+		t.Fatalf("expected dev claims to include repo and run id")
+	}
 }
 
 func TestAuthenticateInvalidToken(t *testing.T) {

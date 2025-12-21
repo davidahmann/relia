@@ -3,19 +3,54 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/davidahmann/relia_oss/internal/auth"
 )
 
 type Handler struct {
-	Auth auth.Authenticator
+	Auth             auth.Authenticator
+	AuthorizeService *AuthorizeService
 }
 
 func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if !h.ensureAuth(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "authorize not implemented"})
+
+	if h.AuthorizeService == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "authorize service not configured"})
+		return
+	}
+
+	var req AuthorizeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	claims, err := h.Authenticate(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
+	actor := ActorContext{
+		Subject:  claims.Subject,
+		Issuer:   claims.Issuer,
+		Repo:     claims.Repo,
+		Workflow: claims.Workflow,
+		RunID:    claims.RunID,
+		SHA:      claims.SHA,
+	}
+
+	resp, err := h.AuthorizeService.Authorize(actor, req, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) Approvals(w http.ResponseWriter, r *http.Request) {

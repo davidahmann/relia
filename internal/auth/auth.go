@@ -13,10 +13,12 @@ var (
 )
 
 type Claims struct {
-	Subject string
-	Issuer  string
-	Repo    string
-	RunID   string
+	Subject  string
+	Issuer   string
+	Repo     string
+	Workflow string
+	RunID    string
+	SHA      string
 }
 
 type Authenticator interface {
@@ -39,7 +41,7 @@ func (a *MultiAuthenticator) Authenticate(r *http.Request) (Claims, error) {
 
 	if a.DevToken != "" {
 		if bearer == a.DevToken {
-			return Claims{Subject: "dev", Issuer: "relia-dev"}, nil
+			return Claims{Subject: "dev", Issuer: "relia-dev", Repo: "dev/repo", Workflow: "dev", RunID: "dev", SHA: "dev"}, nil
 		}
 	}
 
