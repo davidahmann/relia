@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -101,6 +103,92 @@ func TestBuildZipIncludesArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildZipManifestIncludesRefs(t *testing.T) {
+	seed := make([]byte, ed25519.SeedSize)
+	priv := ed25519.NewKeyFromSeed(seed)
+
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+	source := types.ContextSource{Kind: "github_actions", Repo: "org/repo", Workflow: "wf", RunID: "1", Actor: "dev", Ref: "refs/heads/main", SHA: "abc"}
+	inputs := types.ContextInputs{Action: "terraform.apply", Resource: "res", Env: "prod"}
+	ctx, err := context.BuildContext(source, inputs, types.ContextEvidence{}, createdAt)
+	if err != nil {
+		t.Fatalf("context: %v", err)
+	}
+	policy := types.DecisionPolicy{PolicyID: "relia-default", PolicyVersion: "2025-12-20", PolicyHash: "sha256:policy"}
+	dec, err := decision.BuildDecision(ctx.ContextID, policy, "deny", nil, false, "low", createdAt)
+	if err != nil {
+		t.Fatalf("decision: %v", err)
+	}
+
+	receipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
+		CreatedAt:  createdAt,
+		IdemKey:    "idem",
+		ContextID:  ctx.ContextID,
+		DecisionID: dec.DecisionID,
+		Actor:      types.ReceiptActor{Kind: "workload", Subject: "dev"},
+		Request:    types.ReceiptRequest{RequestID: "req", Action: "terraform.apply", Resource: "res", Env: "prod"},
+		Policy:     types.ReceiptPolicy{PolicyHash: "sha256:policy"},
+		Refs: &types.ReceiptRefs{
+			Context:  &types.ContextRef{ContextID: "context-1", RecordHash: "sha256:ctxrecord"},
+			Decision: &types.DecisionRef{DecisionID: "decision-1", InputsDigest: "sha256:decinputs"},
+		},
+		Outcome: types.ReceiptOutcome{Status: types.OutcomeDenied},
+	}, testSigner{keyID: "test", priv: priv})
+	if err != nil {
+		t.Fatalf("receipt: %v", err)
+	}
+
+	zipBytes, err := BuildZip(Input{
+		Receipt:  receipt,
+		Context:  ctx,
+		Decision: dec,
+		Policy:   []byte("policy_id: relia-default\n"),
+	}, "http://localhost:8080")
+	if err != nil {
+		t.Fatalf("build zip: %v", err)
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		t.Fatalf("zip reader: %v", err)
+	}
+
+	var manifestBytes []byte
+	for _, f := range reader.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open manifest: %v", err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("read manifest: %v", err)
+		}
+		manifestBytes = b
+		break
+	}
+	if len(manifestBytes) == 0 {
+		t.Fatalf("missing manifest.json")
+	}
+
+	var manifest types.PackManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if manifest.Refs == nil || manifest.Refs.Context == nil || manifest.Refs.Decision == nil {
+		t.Fatalf("expected refs in manifest")
+	}
+	if manifest.Refs.Context.RecordHash != "sha256:ctxrecord" {
+		t.Fatalf("unexpected context refs: %+v", manifest.Refs.Context)
+	}
+	if manifest.Refs.Decision.InputsDigest != "sha256:decinputs" {
+		t.Fatalf("unexpected decision refs: %+v", manifest.Refs.Decision)
+	}
+}
+
 func TestBuildFilesRequiresPolicy(t *testing.T) {
 	_, err := BuildFiles(Input{}, "")
 	if err == nil {
@@ -160,5 +248,45 @@ func TestBuildFilesInvalidReceiptJSON(t *testing.T) {
 	}, "")
 	if err == nil {
 		t.Fatalf("expected error")
+	}
+}
+
+func TestExtractReceiptRefs(t *testing.T) {
+	bodyWithRefs, err := json.Marshal(map[string]any{
+		"refs": &types.ReceiptRefs{
+			Context: &types.ContextRef{
+				ContextID:  "sha256:ctx",
+				RecordHash: "sha256:ctx_record",
+			},
+			Decision: &types.DecisionRef{
+				DecisionID:   "sha256:dec",
+				InputsDigest: "sha256:inputs",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		body    []byte
+		wantNil bool
+	}{
+		{name: "empty", body: nil, wantNil: true},
+		{name: "invalid_json", body: []byte("not-json"), wantNil: true},
+		{name: "missing_refs", body: []byte(`{"x":1}`), wantNil: true},
+		{name: "null_refs", body: []byte(`{"refs":null}`), wantNil: true},
+		{name: "empty_refs_obj", body: []byte(`{"refs":{}}`), wantNil: true},
+		{name: "valid_refs", body: bodyWithRefs, wantNil: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractReceiptRefs(tc.body)
+			if (got == nil) != tc.wantNil {
+				t.Fatalf("got nil=%v, wantNil=%v", got == nil, tc.wantNil)
+			}
+		})
 	}
 }

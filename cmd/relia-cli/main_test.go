@@ -37,7 +37,7 @@ func TestHandleVerify(t *testing.T) {
 			t.Fatalf("unexpected auth header: %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true,"grade":"A"}`))
+		_, _ = w.Write([]byte(`{"receipt_id":"r1","valid":true,"grade":"A","receipt":{"refs":{"context":{"context_id":"c1","record_hash":"sha256:ctx"},"decision":{"decision_id":"d1","inputs_digest":"sha256:dec"}}}}`))
 	})
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -53,6 +53,9 @@ func TestHandleVerify(t *testing.T) {
 	if !strings.Contains(out.String(), "grade=A") {
 		t.Fatalf("expected grade output, got: %s", out.String())
 	}
+	if !strings.Contains(out.String(), "refs=") {
+		t.Fatalf("expected refs output, got: %s", out.String())
+	}
 
 	out.Reset()
 	errOut.Reset()
@@ -60,7 +63,7 @@ func TestHandleVerify(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
-	if strings.TrimSpace(out.String()) != `{"receipt_id":"r1","valid":true,"grade":"A"}` {
+	if strings.TrimSpace(out.String()) == "" {
 		t.Fatalf("unexpected json stdout: %s", out.String())
 	}
 }

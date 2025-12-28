@@ -5,7 +5,7 @@ import (
 	"github.com/davidahmann/relia/pkg/types"
 )
 
-const ContextSchema = "fabra.context.v0.1"
+const ContextSchema = "relia.context.v0.1"
 
 // BuildContext builds a context record and computes its context_id.
 func BuildContext(source types.ContextSource, inputs types.ContextInputs, evidence types.ContextEvidence, createdAt string) (types.ContextRecord, error) {

@@ -4,16 +4,19 @@ import (
 	"fmt"
 
 	"github.com/davidahmann/relia/internal/crypto"
+	"github.com/davidahmann/relia/pkg/types"
 )
 
 type AuthorizeRequest struct {
-	RequestID string            `json:"request_id,omitempty"`
-	Action    string            `json:"action"`
-	Resource  string            `json:"resource"`
-	Env       string            `json:"env"`
-	Intent    map[string]any    `json:"intent,omitempty"`
-	Evidence  AuthorizeEvidence `json:"evidence,omitempty"`
-	AWS       *AuthorizeAWS     `json:"aws,omitempty"`
+	RequestID   string             `json:"request_id,omitempty"`
+	Action      string             `json:"action"`
+	Resource    string             `json:"resource"`
+	Env         string             `json:"env"`
+	Intent      map[string]any     `json:"intent,omitempty"`
+	Evidence    AuthorizeEvidence  `json:"evidence,omitempty"`
+	AWS         *AuthorizeAWS      `json:"aws,omitempty"`
+	ContextRef  *types.ContextRef  `json:"context_ref,omitempty"`
+	DecisionRef *types.DecisionRef `json:"decision_ref,omitempty"`
 }
 
 type AuthorizeEvidence struct {
@@ -62,6 +65,21 @@ func ComputeIdemKey(actor ActorContext, req AuthorizeRequest) (string, error) {
 		"env":         req.Env,
 		"intent":      intent,
 		"plan_digest": req.Evidence.PlanDigest,
+	}
+	if req.ContextRef != nil {
+		payload["context_ref"] = map[string]any{
+			"context_id":   req.ContextRef.ContextID,
+			"record_hash":  req.ContextRef.RecordHash,
+			"content_hash": req.ContextRef.ContentHash,
+		}
+	}
+	if req.DecisionRef != nil {
+		payload["decision_ref"] = map[string]any{
+			"decision_id":    req.DecisionRef.DecisionID,
+			"inputs_digest":  req.DecisionRef.InputsDigest,
+			"record_hash":    req.DecisionRef.RecordHash,
+			"content_digest": req.DecisionRef.ContentDigest,
+		}
 	}
 
 	if req.RequestID != "" {

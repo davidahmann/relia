@@ -67,3 +67,26 @@ type ReceiptOutcome struct {
 		Msg  string `json:"msg"`
 	} `json:"error,omitempty"`
 }
+
+// ContextRef is a stable upstream handle for a context artifact (Fabra-owned).
+// Relia treats these fields as pass-through references (it does not validate them).
+type ContextRef struct {
+	ContextID   string `json:"context_id,omitempty"`
+	RecordHash  string `json:"record_hash,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
+}
+
+// DecisionRef is a stable upstream handle for a decision artifact (Lumyn-owned).
+// Relia treats these fields as pass-through references (it does not validate them).
+type DecisionRef struct {
+	DecisionID    string `json:"decision_id,omitempty"`
+	InputsDigest  string `json:"inputs_digest,omitempty"`
+	RecordHash    string `json:"record_hash,omitempty"`
+	ContentDigest string `json:"content_digest,omitempty"`
+}
+
+// ReceiptRefs links a receipt to upstream artifacts without embedding them.
+type ReceiptRefs struct {
+	Context  *ContextRef  `json:"context,omitempty"`
+	Decision *DecisionRef `json:"decision,omitempty"`
+}

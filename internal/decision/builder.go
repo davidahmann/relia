@@ -5,7 +5,7 @@ import (
 	"github.com/davidahmann/relia/pkg/types"
 )
 
-const DecisionSchema = "lumyn.decision.v0.1"
+const DecisionSchema = "relia.decision.v0.1"
 
 // BuildDecision builds a decision record and computes its decision_id.
 func BuildDecision(contextID string, policy types.DecisionPolicy, verdict string, reasonCodes []string, requiresApproval bool, risk string, createdAt string) (types.DecisionRecord, error) {

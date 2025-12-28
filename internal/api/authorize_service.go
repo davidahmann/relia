@@ -156,6 +156,11 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 
 	outcome := outcomeForAction(action)
 
+	var refs *types.ReceiptRefs
+	if req.ContextRef != nil || req.DecisionRef != nil {
+		refs = &types.ReceiptRefs{Context: req.ContextRef, Decision: req.DecisionRef}
+	}
+
 	baseReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
 		CreatedAt:  createdAt,
 		IdemKey:    idemKey,
@@ -178,6 +183,7 @@ func (s *AuthorizeService) Authorize(claims ActorContext, req AuthorizeRequest, 
 			Intent:    req.Intent,
 		},
 		Policy:   receiptPolicy,
+		Refs:     refs,
 		Approval: approval,
 		Outcome:  outcome,
 	}, s.Signer)
@@ -428,6 +434,8 @@ func (s *AuthorizeService) Approve(approvalID string, status string, createdAt s
 			return fmt.Errorf("latest receipt not found")
 		}
 
+		refs := receiptRefsFromBody(latestReceipt.BodyJSON)
+
 		outcome := types.ReceiptOutcome{Status: types.OutcomeApprovalDenied}
 		if approvalStatus == ApprovalApproved {
 			outcome.Status = types.OutcomeApprovalApproved
@@ -442,6 +450,7 @@ func (s *AuthorizeService) Approve(approvalID string, status string, createdAt s
 			Actor:               types.ReceiptActor{Kind: "approval", Subject: "slack"},
 			Request:             types.ReceiptRequest{RequestID: "approval", Action: "approve", Resource: approval.IdemKey, Env: ""},
 			Policy:              types.ReceiptPolicy{PolicyHash: latestReceipt.PolicyHash},
+			Refs:                refs,
 			Approval: &types.ReceiptApproval{
 				Required:   true,
 				ApprovalID: approvalID,
@@ -580,6 +589,25 @@ func ptrOrNil(s string) *string {
 	return &s
 }
 
+func receiptRefsFromBody(body []byte) *types.ReceiptRefs {
+	if len(body) == 0 {
+		return nil
+	}
+	var payload struct {
+		Refs *types.ReceiptRefs `json:"refs,omitempty"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	if payload.Refs == nil {
+		return nil
+	}
+	if payload.Refs.Context == nil && payload.Refs.Decision == nil {
+		return nil
+	}
+	return payload.Refs
+}
+
 func outcomeForAction(action NextAction) types.ReceiptOutcome {
 	switch action {
 	case ActionReturnDenied:
@@ -631,6 +659,8 @@ func (s *AuthorizeService) finalizeIssuance(idemKey string, issuingReceipt ledge
 		return AuthorizeResponse{}, err
 	}
 
+	refs := receiptRefsFromBody(issuingReceipt.BodyJSON)
+
 	finalReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
 		CreatedAt:           createdAt,
 		IdemKey:             idemKey,
@@ -654,6 +684,7 @@ func (s *AuthorizeService) finalizeIssuance(idemKey string, issuingReceipt ledge
 			Intent:    req.Intent,
 		},
 		Policy:          types.ReceiptPolicy{PolicyHash: issuingReceipt.PolicyHash},
+		Refs:            refs,
 		CredentialGrant: credentialGrant,
 		Outcome:         types.ReceiptOutcome{Status: types.OutcomeIssuedCredentials, ExpiresAt: creds.ExpiresAt.UTC().Format(time.RFC3339)},
 	}, s.Signer)
@@ -728,6 +759,8 @@ func (s *AuthorizeService) issueApprovedReady(idemKey string, idem ledger.Idempo
 		return AuthorizeResponse{}, fmt.Errorf("missing aws_role_arn in policy")
 	}
 
+	refs := receiptRefsFromBody(latest.BodyJSON)
+
 	issuingReceipt, err := ledger.MakeReceipt(ledger.MakeReceiptInput{
 		CreatedAt:           createdAt,
 		IdemKey:             idemKey,
@@ -751,6 +784,7 @@ func (s *AuthorizeService) issueApprovedReady(idemKey string, idem ledger.Idempo
 			Intent:    req.Intent,
 		},
 		Policy:  types.ReceiptPolicy{PolicyHash: latest.PolicyHash},
+		Refs:    refs,
 		Outcome: types.ReceiptOutcome{Status: types.OutcomeIssuingCredentials},
 	}, s.Signer)
 	if err != nil {

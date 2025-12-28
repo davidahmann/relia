@@ -64,6 +64,7 @@ var verifyPageTmpl = template.Must(template.New("verify").Parse(`<!doctype html>
 	      <div class="kv"><div class="k">Verdict</div><div class="v">{{.Verdict}}</div></div>
 	      <div class="kv"><div class="k">Approval</div><div class="v">{{.Approval}}</div></div>
 	      <div class="kv"><div class="k">Policy</div><div class="v">{{.Policy}}</div></div>
+	      <div class="kv"><div class="k">Refs</div><div class="v">{{if .Refs}}<code>{{.Refs}}</code>{{else}}<span class="muted">n/a</span>{{end}}</div></div>
 	      <div class="kv"><div class="k">Role / TTL</div><div class="v">{{.RoleTTL}}</div></div>
 	      <div class="kv"><div class="k">GitHub Run</div><div class="v">{{if .RunURL}}<a href="{{.RunURL}}">{{.RunURL}}</a>{{else}}<span class="muted">n/a</span>{{end}}</div></div>
 	      <div class="kv"><div class="k">Plan Digest</div><div class="v">{{if .PlanDigest}}<code>{{.PlanDigest}}</code>{{else}}<span class="muted">n/a</span>{{end}}</div></div>
@@ -132,6 +133,7 @@ func (h *Handler) VerifyPage(w http.ResponseWriter, r *http.Request) {
 	var rb struct {
 		Policy          types.ReceiptPolicy           `json:"policy"`
 		Approval        *types.ReceiptApproval        `json:"approval,omitempty"`
+		Refs            *types.ReceiptRefs            `json:"refs,omitempty"`
 		CredentialGrant *types.ReceiptCredentialGrant `json:"credential_grant,omitempty"`
 	}
 	_ = json.Unmarshal(receiptRec.BodyJSON, &rb)
@@ -145,6 +147,7 @@ func (h *Handler) VerifyPage(w http.ResponseWriter, r *http.Request) {
 		Approval   string
 		Policy     string
 		RoleTTL    string
+		Refs       string
 		RunURL     string
 		PlanDigest string
 		DiffURL    string
@@ -209,6 +212,30 @@ func (h *Handler) VerifyPage(w http.ResponseWriter, r *http.Request) {
 	if ctx != nil {
 		v.PlanDigest = ctx.Evidence.PlanDigest
 		v.DiffURL = ctx.Evidence.DiffURL
+	}
+
+	v.Refs = ""
+	if rb.Refs != nil {
+		if rb.Refs.Context != nil {
+			if rb.Refs.Context.ContextID != "" {
+				v.Refs += "context_id=" + rb.Refs.Context.ContextID + " "
+			}
+			if rb.Refs.Context.RecordHash != "" {
+				v.Refs += "record_hash=" + rb.Refs.Context.RecordHash + " "
+			}
+			if rb.Refs.Context.ContentHash != "" {
+				v.Refs += "content_hash=" + rb.Refs.Context.ContentHash + " "
+			}
+		}
+		if rb.Refs.Decision != nil {
+			if rb.Refs.Decision.DecisionID != "" {
+				v.Refs += "decision_id=" + rb.Refs.Decision.DecisionID + " "
+			}
+			if rb.Refs.Decision.InputsDigest != "" {
+				v.Refs += "inputs_digest=" + rb.Refs.Decision.InputsDigest + " "
+			}
+		}
+		v.Refs = strings.TrimSpace(v.Refs)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

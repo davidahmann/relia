@@ -76,10 +76,11 @@ func handleVerify(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	var payload struct {
-		ReceiptID string `json:"receipt_id"`
-		Valid     bool   `json:"valid"`
-		Error     string `json:"error,omitempty"`
-		Grade     string `json:"grade,omitempty"`
+		ReceiptID string         `json:"receipt_id"`
+		Valid     bool           `json:"valid"`
+		Error     string         `json:"error,omitempty"`
+		Grade     string         `json:"grade,omitempty"`
+		Receipt   map[string]any `json:"receipt,omitempty"`
 	}
 	if err := json.Unmarshal(respBody, &payload); err != nil {
 		fmt.Fprintln(stderr, "invalid response:", err)
@@ -92,15 +93,63 @@ func handleVerify(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if payload.Valid {
+		line := fmt.Sprintf("valid=true receipt_id=%s", payload.ReceiptID)
 		if payload.Grade != "" {
-			fmt.Fprintf(stdout, "valid=true receipt_id=%s grade=%s\n", payload.ReceiptID, payload.Grade)
-		} else {
-			fmt.Fprintf(stdout, "valid=true receipt_id=%s\n", payload.ReceiptID)
+			line += " grade=" + payload.Grade
 		}
+		if refs := formatRefs(payload.Receipt); refs != "" {
+			line += " refs=" + refs
+		}
+		fmt.Fprintln(stdout, line)
 		return 0
 	}
-	fmt.Fprintf(stdout, "valid=false receipt_id=%s error=%s\n", payload.ReceiptID, payload.Error)
+	line := fmt.Sprintf("valid=false receipt_id=%s error=%s", payload.ReceiptID, payload.Error)
+	if refs := formatRefs(payload.Receipt); refs != "" {
+		line += " refs=" + refs
+	}
+	fmt.Fprintln(stdout, line)
 	return 1
+}
+
+func formatRefs(receipt map[string]any) string {
+	if receipt == nil {
+		return ""
+	}
+	refsAny, ok := receipt["refs"]
+	if !ok || refsAny == nil {
+		return ""
+	}
+	refs, ok := refsAny.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	out := ""
+	if ctxAny, ok := refs["context"]; ok {
+		if ctx, ok := ctxAny.(map[string]any); ok {
+			out = appendKV(out, "context_id", ctx["context_id"])
+			out = appendKV(out, "record_hash", ctx["record_hash"])
+			out = appendKV(out, "content_hash", ctx["content_hash"])
+		}
+	}
+	if decAny, ok := refs["decision"]; ok {
+		if dec, ok := decAny.(map[string]any); ok {
+			out = appendKV(out, "decision_id", dec["decision_id"])
+			out = appendKV(out, "inputs_digest", dec["inputs_digest"])
+		}
+	}
+	return out
+}
+
+func appendKV(s string, k string, v any) string {
+	val, ok := v.(string)
+	if !ok || strings.TrimSpace(val) == "" {
+		return s
+	}
+	if s != "" {
+		s += ","
+	}
+	return s + k + "=" + val
 }
 
 func handlePack(args []string, stdout io.Writer, stderr io.Writer) int {

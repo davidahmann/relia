@@ -11,23 +11,24 @@ import (
 )
 
 type Summary struct {
-	Schema        string `json:"schema"`
-	ReceiptID     string `json:"receipt_id"`
-	DecisionID    string `json:"decision_id"`
-	ContextID     string `json:"context_id"`
-	Verdict       string `json:"verdict"`
-	Grade         string `json:"grade"`
-	ApprovalID    string `json:"approval_id,omitempty"`
-	ApprovalState string `json:"approval_status,omitempty"`
-	PolicyID      string `json:"policy_id,omitempty"`
-	PolicyVersion string `json:"policy_version,omitempty"`
-	PolicyHash    string `json:"policy_hash"`
-	RoleARN       string `json:"role_arn,omitempty"`
-	TTLSeconds    int64  `json:"ttl_seconds,omitempty"`
-	PlanDigest    string `json:"plan_digest,omitempty"`
-	DiffURL       string `json:"diff_url,omitempty"`
-	VerifyURL     string `json:"verify_url,omitempty"`
-	PackURL       string `json:"pack_url,omitempty"`
+	Schema        string             `json:"schema"`
+	ReceiptID     string             `json:"receipt_id"`
+	DecisionID    string             `json:"decision_id"`
+	ContextID     string             `json:"context_id"`
+	Verdict       string             `json:"verdict"`
+	Grade         string             `json:"grade"`
+	Refs          *types.ReceiptRefs `json:"refs,omitempty"`
+	ApprovalID    string             `json:"approval_id,omitempty"`
+	ApprovalState string             `json:"approval_status,omitempty"`
+	PolicyID      string             `json:"policy_id,omitempty"`
+	PolicyVersion string             `json:"policy_version,omitempty"`
+	PolicyHash    string             `json:"policy_hash"`
+	RoleARN       string             `json:"role_arn,omitempty"`
+	TTLSeconds    int64              `json:"ttl_seconds,omitempty"`
+	PlanDigest    string             `json:"plan_digest,omitempty"`
+	DiffURL       string             `json:"diff_url,omitempty"`
+	VerifyURL     string             `json:"verify_url,omitempty"`
+	PackURL       string             `json:"pack_url,omitempty"`
 }
 
 const SummarySchema = "relia.pack_summary.v0.1"
@@ -42,6 +43,7 @@ func BuildSummary(input Input, baseURL string) (Summary, []byte, error) {
 
 	var rb struct {
 		Approval        *types.ReceiptApproval        `json:"approval,omitempty"`
+		Refs            *types.ReceiptRefs            `json:"refs,omitempty"`
 		CredentialGrant *types.ReceiptCredentialGrant `json:"credential_grant,omitempty"`
 	}
 	_ = json.Unmarshal(input.Receipt.BodyJSON, &rb)
@@ -53,6 +55,7 @@ func BuildSummary(input Input, baseURL string) (Summary, []byte, error) {
 		ContextID:     input.Context.ContextID,
 		Verdict:       input.Decision.Verdict,
 		Grade:         quality.Grade,
+		Refs:          rb.Refs,
 		PolicyID:      input.Decision.Policy.PolicyID,
 		PolicyVersion: input.Decision.Policy.PolicyVersion,
 		PolicyHash:    input.Decision.Policy.PolicyHash,

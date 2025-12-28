@@ -112,6 +112,7 @@ func BuildFiles(input Input, baseURL string) (map[string][]byte, error) {
 		},
 		Files: fileEntries,
 	}
+	manifest.Refs = extractReceiptRefs(input.Receipt.BodyJSON)
 
 	if input.Receipt.ApprovalID != nil {
 		manifest.ApprovalID = *input.Receipt.ApprovalID
@@ -127,6 +128,25 @@ func BuildFiles(input Input, baseURL string) (map[string][]byte, error) {
 	files["sha256sums.txt"] = checksums
 
 	return files, nil
+}
+
+func extractReceiptRefs(body []byte) *types.ReceiptRefs {
+	if len(body) == 0 {
+		return nil
+	}
+	var payload struct {
+		Refs *types.ReceiptRefs `json:"refs,omitempty"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	if payload.Refs == nil {
+		return nil
+	}
+	if payload.Refs.Context == nil && payload.Refs.Decision == nil {
+		return nil
+	}
+	return payload.Refs
 }
 
 func buildReceiptJSON(receipt ledger.StoredReceipt, baseURL string) ([]byte, error) {

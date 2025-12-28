@@ -28,6 +28,7 @@ type MakeReceiptInput struct {
 	Request types.ReceiptRequest
 	Policy  types.ReceiptPolicy
 
+	Refs            *types.ReceiptRefs
 	Approval        *types.ReceiptApproval
 	CredentialGrant *types.ReceiptCredentialGrant
 	Outcome         types.ReceiptOutcome
@@ -106,6 +107,9 @@ func MakeReceipt(in MakeReceiptInput, signer Signer) (StoredReceipt, error) {
 			"error":      outcomeError,
 		},
 	}
+	if refs := refsMap(in.Refs); refs != nil {
+		body["refs"] = refs
+	}
 
 	canonical, err := crypto.Canonicalize(body)
 	if err != nil {
@@ -171,6 +175,40 @@ func approvalMap(approval *types.ReceiptApproval) map[string]any {
 		"status":      emptyToNil(approval.Status),
 		"approved_at": emptyToNil(approval.ApprovedAt),
 		"approver":    approver,
+	}
+}
+
+func refsMap(refs *types.ReceiptRefs) map[string]any {
+	if refs == nil {
+		return nil
+	}
+
+	var ctx map[string]any
+	if refs.Context != nil {
+		ctx = map[string]any{
+			"context_id":   emptyToNil(refs.Context.ContextID),
+			"record_hash":  emptyToNil(refs.Context.RecordHash),
+			"content_hash": emptyToNil(refs.Context.ContentHash),
+		}
+	}
+
+	var decision map[string]any
+	if refs.Decision != nil {
+		decision = map[string]any{
+			"decision_id":    emptyToNil(refs.Decision.DecisionID),
+			"inputs_digest":  emptyToNil(refs.Decision.InputsDigest),
+			"record_hash":    emptyToNil(refs.Decision.RecordHash),
+			"content_digest": emptyToNil(refs.Decision.ContentDigest),
+		}
+	}
+
+	if ctx == nil && decision == nil {
+		return nil
+	}
+
+	return map[string]any{
+		"context":  ctx,
+		"decision": decision,
 	}
 }
 
